@@ -1,5 +1,5 @@
 from typing import Dict, Any, Union, List
-from langchain_core.messages import SystemMessage, HumanMessage
+from langchain_core.messages import SystemMessage, HumanMessage, AIMessage, BaseMessage
 from langgraph.prebuilt import ToolNode
 from app.core.config import settings
 from app.core.llm import get_cached_llm, get_cached_coder_llm
@@ -31,15 +31,23 @@ def extract_text(content: Union[str, List[Any], Any]) -> str:
 
 def planner_node(state: CodingAgentState) -> Dict[str, Any]:
     """
-    Architect Node: Analyzes the user's task in context of the workspace root and produces a blueprint.
-    Uses singleton cached LLM instance.
+    Architect Node: Analyzes the user's task in context of the workspace root
+    and repository tree, producing a structured implementation blueprint.
     """
     llm = get_cached_llm()
-    project_context = f"Current Project Workspace Root: {settings.WORKSPACE_ROOT}"
+    workspace_root = state.get("workspace_root") or str(settings.WORKSPACE_ROOT)
+    repo_tree = state.get("repository_tree") or "Not available."
+    task = state.get("task", "")
+
+    prompt_content = (
+        f"Workspace Root: {workspace_root}\n\n"
+        f"Repository Structure:\n{repo_tree}\n\n"
+        f"User Task:\n{task}"
+    )
 
     messages = [
         SystemMessage(content=PLANNER_SYSTEM_PROMPT),
-        HumanMessage(content=f"Workspace: {project_context}\n\nUser Task:\n{state['task']}"),
+        HumanMessage(content=prompt_content),
     ]
 
     response = llm.invoke(messages)
@@ -51,20 +59,43 @@ def planner_node(state: CodingAgentState) -> Dict[str, Any]:
         "retry_count": 0,
         "test_passed": False,
         "modified_files": [],
+        "coder_findings": [],
     }
 
 
 def coder_node(state: CodingAgentState) -> Dict[str, Any]:
     """
-    Coder Node: Executes the plan or inspects project code using tools.
+    Coder Node: Inspects repository files, executes the blueprint, or performs code modifications.
     Uses singleton cached tool-bound LLM instance.
     """
     coder_llm = get_cached_coder_llm(ALL_TOOLS)
     system_msg = SystemMessage(content=CODER_SYSTEM_PROMPT)
-    messages = [system_msg] + state["messages"]
 
+    history: List[BaseMessage] = list(state.get("messages", []))
+    if not history:
+        workspace_root = state.get("workspace_root") or str(settings.WORKSPACE_ROOT)
+        repo_tree = state.get("repository_tree") or ""
+        task = state.get("task", "")
+        context_str = (
+            f"Workspace Root: {workspace_root}\n\n"
+            f"Repository Structure:\n{repo_tree}\n\n"
+            f"User Task:\n{task}"
+        )
+        history = [HumanMessage(content=context_str)]
+
+    messages = [system_msg] + history
     response = coder_llm.invoke(messages)
-    return {"messages": [response]}
+
+    # Track coder text findings for summarizer
+    response_text = extract_text(response.content)
+    findings = list(state.get("coder_findings", []))
+    if response_text.strip() and not (hasattr(response, "tool_calls") and response.tool_calls):
+        findings.append(response_text.strip())
+
+    return {
+        "messages": [response],
+        "coder_findings": findings,
+    }
 
 
 # Prebuilt LangGraph ToolNode that executes any tool calls on disk/web
@@ -93,8 +124,7 @@ def validator_node(state: CodingAgentState) -> Dict[str, Any]:
 
 def fixer_node(state: CodingAgentState) -> Dict[str, Any]:
     """
-    Fixer / Debugger Node: Analyzes test failure tracebacks and instructs the Coder on what to fix.
-    Uses singleton cached LLM instance.
+    Fixer / Debugger Node: Analyzes test failure tracebacks and provides root-cause diagnosis.
     """
     llm = get_cached_llm()
     current_retry = state.get("retry_count", 0) + 1
@@ -121,14 +151,15 @@ def fixer_node(state: CodingAgentState) -> Dict[str, Any]:
 
     return {
         "retry_count": current_retry,
+        "fixer_analysis": fix_text,
         "messages": [fix_instruction],
     }
 
 
 def summarizer_node(state: CodingAgentState) -> Dict[str, Any]:
     """
-    Summarizer Node: Formats the final user-facing completion report.
-    Uses singleton cached LLM instance.
+    Summarizer Node: Formats the final user-facing completion report based ONLY on
+    verified findings from the Coder, tool execution results, and test suite.
     """
     llm = get_cached_llm()
     task = state.get("task", "")
@@ -136,13 +167,34 @@ def summarizer_node(state: CodingAgentState) -> Dict[str, Any]:
     test_results = state.get("test_results", "")
     test_passed = state.get("test_passed", True)
     retry_count = state.get("retry_count", 0)
+    coder_findings = state.get("coder_findings", [])
+
+    # Extract all relevant conversation insights & tool results
+    conversation_highlights: List[str] = []
+    for msg in state.get("messages", []):
+        if isinstance(msg, AIMessage):
+            content_str = extract_text(msg.content).strip()
+            if content_str and not (hasattr(msg, "tool_calls") and msg.tool_calls):
+                conversation_highlights.append(f"Coder Analysis:\n{content_str}")
+        elif getattr(msg, "type", "") == "tool":
+            tool_name = getattr(msg, "name", "tool")
+            content_str = extract_text(getattr(msg, "content", "")).strip()
+            if content_str:
+                # Truncate large tool outputs for summary prompt
+                preview = content_str[:600] + ("..." if len(content_str) > 600 else "")
+                conversation_highlights.append(f"Tool Result ({tool_name}):\n{preview}")
+
+    findings_summary = "\n\n".join(conversation_highlights)
+    if not findings_summary and coder_findings:
+        findings_summary = "\n\n".join(coder_findings)
 
     summary_prompt = (
-        f"Original User Request: {task}\n\n"
-        f"Architecture Plan / Findings:\n{plan}\n\n"
-        f"Status: {'Completed & Verified ✅' if test_passed else 'Failed ❌'} (Total Retries: {retry_count})\n\n"
-        f"Test / Inspection Results:\n{test_results}\n\n"
-        f"Please write a clean, helpful Markdown response for the user explaining the result or answer."
+        f"Original User Request:\n{task}\n\n"
+        f"Architecture Plan (if any):\n{plan or 'N/A - Direct inspection/execution'}\n\n"
+        f"Coder Analysis & Inspection Findings:\n{findings_summary or 'No specific output recorded.'}\n\n"
+        f"Verification Status: {'Passed ✅' if test_passed else 'Failed / Not Run'}\n"
+        f"Test Execution Output:\n{test_results or 'N/A'}\n\n"
+        f"Please write the final, factual, and concise summary report for the user."
     )
 
     messages = [

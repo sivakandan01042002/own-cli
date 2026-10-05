@@ -6,6 +6,7 @@ from rich.console import Console
 from rich.panel import Panel
 from rich.markdown import Markdown
 
+from langchain_core.messages import HumanMessage
 from prompt_toolkit.layout.containers import HSplit, Window, FloatContainer, Float
 from prompt_toolkit.layout.controls import FormattedTextControl, BufferControl
 from prompt_toolkit.layout.menus import CompletionsMenu
@@ -33,6 +34,7 @@ from app.core.theme import (
     create_summary_panel,
     create_error_panel,
 )
+from app.integrations.tools.file_tools import list_directory
 from app.modules.coding_agent import (
     coding_agent_app,
     dispatch_command,
@@ -135,15 +137,32 @@ def _print_banner():
 
 def execute_workflow(task: str, test_path: Optional[str] = None):
     """Executes the multi-agent graph, streams updates, and saves session in Redis."""
+    try:
+        repo_tree = list_directory.invoke({"dir_path": "."})
+    except Exception:
+        repo_tree = "Unable to retrieve repository file listing."
+
+    initial_human_msg = HumanMessage(
+        content=(
+            f"Workspace Root: {settings.WORKSPACE_ROOT}\n\n"
+            f"Repository Structure:\n{repo_tree}\n\n"
+            f"User Task:\n{task}"
+        )
+    )
+
     initial_state = {
         "task": task,
-        "test_command": test_path or "",
-        "messages": [],
-        "modified_files": [],
-        "retry_count": 0,
-        "test_passed": False,
+        "messages": [initial_human_msg],
+        "workspace_root": str(settings.WORKSPACE_ROOT),
+        "repository_tree": repo_tree,
         "plan": None,
+        "coder_findings": [],
+        "modified_files": [],
+        "test_command": test_path or "",
         "test_results": None,
+        "test_passed": False,
+        "fixer_analysis": None,
+        "retry_count": 0,
         "final_summary": None,
     }
 
@@ -180,17 +199,15 @@ def execute_workflow(task: str, test_path: Optional[str] = None):
                                     elif name == "delete_file":
                                         path = args.get("file_path", "")
                                         console.print(f"  🗑️ [dim red]Deleted file:[/] [bold]{path}[/bold]")
-                                    elif name == "search_web":
-                                        q = args.get("query", "")
-                                        console.print(f"  🔍 [dim yellow]Searched web:[/] [dim]\"{q}\"[/dim]")
                                     elif name == "list_directory":
-                                        d = args.get("dir_path", ".")
-                                        console.print(f"  📁 [dim]Inspected directory:[/] [bold]{d}[/bold]")
+                                        path = args.get("dir_path", ".")
+                                        console.print(f"  📁 [dim cyan]Inspected directory:[/] [bold]{path}[/bold]")
+                                    elif name == "search_web":
+                                        query = args.get("query", "")
+                                        console.print(f"  🔍 [dim yellow]Searched web:[/] [bold]{query}[/bold]")
                                     elif name == "run_terminal_command":
                                         cmd = args.get("command", "")
-                                        console.print(f"  ⚙️ [dim]Executed command:[/] [dim]{cmd}[/dim]")
-                                    elif name == "run_pytest":
-                                        console.print(f"  🧪 [dim cyan]Running pytest suite...[/dim cyan]")
+                                        console.print(f"  ⚡ [dim magenta]Executed command:[/] [bold]{cmd}[/bold]")
 
                     elif node_name == "tools":
                         status.update("[bold cyan]Processing tool results...[/bold cyan]")

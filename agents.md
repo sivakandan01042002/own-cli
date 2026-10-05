@@ -8,15 +8,15 @@ A quick reference guide for the multi-agent system implemented in this workspace
 
 ### 1. 🏗️ Planner Agent (`planner_node`)
 * **Role:** Senior Software Architect
-* **Mission:** Deconstructs coding tasks into clean architectural blueprints with file specifications, test plans, and verification commands.
-* **Input:** `state["task"]`
-* **Output:** `state["plan"]`, initializes `state["retry_count"] = 0`
+* **Mission:** Deconstructs coding tasks against live `repository_tree` into clean architectural blueprints with file specifications, test plans, and verification commands.
+* **Input:** `state["task"]`, `state["repository_tree"]`, `state["workspace_root"]`
+* **Output:** `state["plan"]`, initializes `state["retry_count"] = 0`, `state["test_passed"] = False`
 
 ### 2. 💻 Coder Agent (`coder_node`)
 * **Role:** Senior Software Engineer
-* **Mission:** Inspects existing project files, implements requested features, writes unit tests, or explains project code.
+* **Mission:** Inspects existing project files, implements requested features, writes unit tests, or explains project code based on verified evidence.
 * **Tools Used:** `write_file`, `read_file`, `list_directory`, `search_web`, `run_terminal_command`, `run_pytest`, `delete_file`
-* **Output:** `state["messages"]` (with tool calls for file inspection/creation)
+* **Output:** `state["messages"]` (with tool calls for file inspection/creation), `state["coder_findings"]`
 
 ### 3. ⚙️ Tool Execution Node (`tool_node`)
 * **Role:** Python Execution Engine (Prebuilt LangGraph `ToolNode`)
@@ -30,11 +30,11 @@ A quick reference guide for the multi-agent system implemented in this workspace
 ### 5. 🩹 Fixer Agent (`fixer_node`)
 * **Role:** Debugger & QA Lead
 * **Mission:** Triggered on test failure. Analyzes tracebacks, isolates the bug, and gives precise fix instructions back to the Coder.
-* **Output:** `state["retry_count"] += 1`, fix instructions appended to `state["messages"]`
+* **Output:** `state["retry_count"] += 1`, `state["fixer_analysis"]`, fix instructions appended to `state["messages"]`
 
 ### 6. 📋 Summarizer Agent (`summarizer_node`)
 * **Role:** Technical Writer & Presenter
-* **Mission:** Formats the final user-facing completion report with features implemented, files created, and test verification proof.
+* **Mission:** Formats the final user-facing completion report with features implemented, files created, and test verification proof based ONLY on verified findings.
 * **Output:** `state["final_summary"]`
 
 ---
@@ -47,7 +47,7 @@ A quick reference guide for the multi-agent system implemented in this workspace
 
 2. **`should_continue_coder` (After `coder`)**:
    * Has tool calls $\rightarrow$ `tools` $\rightarrow$ `coder` (Loop).
-   * Code was modified (`write_file` called) $\rightarrow$ `validator` (Runs Pytest).
+   * Code was modified (`write_file` or `delete_file` called) $\rightarrow$ `validator` (Runs Pytest).
    * No code modified (read-only/Q&A) $\rightarrow$ `summarizer` (Direct answer, skips Pytest).
 
 3. **`should_retry_or_finish` (After `validator`)**:
