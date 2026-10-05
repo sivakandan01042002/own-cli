@@ -1,7 +1,7 @@
-from typing import Dict, Any
+from typing import Dict, Any, Union, List
 from langchain_core.messages import SystemMessage, HumanMessage
 from langgraph.prebuilt import ToolNode
-from app.core.llm import get_llm
+from app.core.llm import get_cached_llm, get_cached_coder_llm
 from app.integrations.tools import ALL_TOOLS
 from app.integrations.tools.terminal_tools import run_pytest
 from app.modules.coding_agent.state import CodingAgentState
@@ -13,28 +13,37 @@ from app.modules.coding_agent.prompts import (
 )
 
 
-# Initialize the base LLM for reasoning
-base_llm = get_llm()
-
-# Bind tools to the LLM so the Coder agent can create/read files and search the web
-coder_llm = base_llm.bind_tools(ALL_TOOLS)
+def extract_text(content: Union[str, List[Any], Any]) -> str:
+    """Safely extracts string text from LLM message content across different providers."""
+    if isinstance(content, str):
+        return content
+    if isinstance(content, list):
+        parts = []
+        for part in content:
+            if isinstance(part, str):
+                parts.append(part)
+            elif isinstance(part, dict) and "text" in part:
+                parts.append(part["text"])
+        return "".join(parts)
+    return str(content)
 
 
 def planner_node(state: CodingAgentState) -> Dict[str, Any]:
     """
     Architect Node: Analyzes the user's task and produces a structured blueprint.
+    Uses singleton cached LLM instance.
     """
+    llm = get_cached_llm()
     messages = [
         SystemMessage(content=PLANNER_SYSTEM_PROMPT),
         HumanMessage(content=f"User Task:\n{state['task']}"),
     ]
 
-    # Call the model to generate the architecture plan
-    response = base_llm.invoke(messages)
+    response = llm.invoke(messages)
+    plan_text = extract_text(response.content)
 
-    # Return the state updates
     return {
-        "plan": response.content,
+        "plan": plan_text,
         "messages": [response],
         "retry_count": 0,
         "test_passed": False,
@@ -45,13 +54,13 @@ def planner_node(state: CodingAgentState) -> Dict[str, Any]:
 def coder_node(state: CodingAgentState) -> Dict[str, Any]:
     """
     Coder Node: Executes the plan by generating code, tests, or emitting tool calls.
+    Uses singleton cached tool-bound LLM instance.
     """
+    coder_llm = get_cached_coder_llm(ALL_TOOLS)
     system_msg = SystemMessage(content=CODER_SYSTEM_PROMPT)
     messages = [system_msg] + state["messages"]
 
-    # The LLM inspects the history and decides whether to write files or respond with text
     response = coder_llm.invoke(messages)
-
     return {"messages": [response]}
 
 
@@ -63,9 +72,7 @@ def validator_node(state: CodingAgentState) -> Dict[str, Any]:
     """
     Validator Node: Reads test target from state and executes pytest in the workspace.
     """
-    # Explicitly check state for a specific test file/target
     target_test = state.get("test_command") or ""
-
     test_output = run_pytest.invoke({"test_path": target_test})
 
     # Check if pytest exited with code 0 and has no failure keywords
@@ -80,7 +87,9 @@ def validator_node(state: CodingAgentState) -> Dict[str, Any]:
 def fixer_node(state: CodingAgentState) -> Dict[str, Any]:
     """
     Fixer / Debugger Node: Analyzes test failure tracebacks and instructs the Coder on what to fix.
+    Uses singleton cached LLM instance.
     """
+    llm = get_cached_llm()
     current_retry = state.get("retry_count", 0) + 1
     test_results = state.get("test_results", "No test output available.")
 
@@ -96,10 +105,11 @@ def fixer_node(state: CodingAgentState) -> Dict[str, Any]:
         HumanMessage(content=prompt_content),
     ]
 
-    response = base_llm.invoke(messages)
+    response = llm.invoke(messages)
+    fix_text = extract_text(response.content)
 
     fix_instruction = HumanMessage(
-        content=f"⚠️ Test Failure Analysis & Fix Instructions (Attempt {current_retry}):\n{response.content}"
+        content=f"⚠️ Test Failure Analysis & Fix Instructions (Attempt {current_retry}):\n{fix_text}"
     )
 
     return {
@@ -111,7 +121,9 @@ def fixer_node(state: CodingAgentState) -> Dict[str, Any]:
 def summarizer_node(state: CodingAgentState) -> Dict[str, Any]:
     """
     Summarizer Node: Formats the final user-facing completion report.
+    Uses singleton cached LLM instance.
     """
+    llm = get_cached_llm()
     task = state.get("task", "")
     plan = state.get("plan", "")
     test_results = state.get("test_results", "")
@@ -131,11 +143,7 @@ def summarizer_node(state: CodingAgentState) -> Dict[str, Any]:
         HumanMessage(content=summary_prompt),
     ]
 
-    response = base_llm.invoke(messages)
-    return {"final_summary": response.content}
+    response = llm.invoke(messages)
+    summary_text = extract_text(response.content)
 
-
-
-
-
-
+    return {"final_summary": summary_text}

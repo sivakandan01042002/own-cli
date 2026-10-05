@@ -24,6 +24,7 @@ if str(backend_root) not in sys.path:
 from app.core.config import settings
 from app.core.guardrails import triage_user_input
 from app.core.exceptions import format_error_for_user
+from app.core.redis_client import save_session_record
 from app.core.theme import (
     CLI_STYLE,
     DIVIDER,
@@ -47,9 +48,11 @@ class SlashCommandCompleter(Completer):
     """Autocomplete for slash commands with rich metadata descriptions."""
     COMMANDS = [
         ("/help", "Display command guide"),
+        ("/session", "List past coding sessions stored in Redis"),
+        ("/sessions", "List past coding sessions stored in Redis"),
         ("/model", "Show active LLM provider"),
-        ("/model gemini", "Switch to Google Gemini 1.5 Flash"),
-        ("/model groq", "Switch to Groq LLaMA 3.1 8B"),
+        ("/model gemini", "Switch to Google Gemini 3.8 Flash"),
+        ("/model groq", "Switch to Groq GPT-OSS 120B"),
         ("/tools", "Inspect registered agent tools"),
         ("/history", "View session task history"),
         ("/clear", "Clear terminal screen"),
@@ -65,7 +68,7 @@ class SlashCommandCompleter(Completer):
 
 
 class FramedPromptSession:
-    """Interactive prompt that keeps top & bottom dividers locked directly around the input while typing."""
+    """Interactive prompt that dynamically wraps and expands with text while keeping framing dividers locked."""
     def __init__(self, completer: Optional[Completer] = None, style=None):
         self.completer = completer
         self.style = style
@@ -89,13 +92,18 @@ class FramedPromptSession:
             complete_while_typing=True,
         )
 
+        def _get_line_prefix(line_no: int, wrap_count: int):
+            if line_no == 0 and wrap_count == 0:
+                return [("class:prompt", "❯ ")]
+            return [("class:prompt", "  ")]
+
         root = HSplit([
             Window(FormattedTextControl([("class:divider", DIVIDER)]), height=1, dont_extend_height=True),
             FloatContainer(
                 content=Window(
                     BufferControl(buffer=buf),
-                    get_line_prefix=lambda line_no, wrap_count: [("class:prompt", "❯ ")],
-                    height=1,
+                    get_line_prefix=_get_line_prefix,
+                    wrap_lines=True,
                     dont_extend_height=True,
                 ),
                 floats=[
@@ -126,7 +134,7 @@ def _print_banner():
 
 
 def execute_workflow(task: str, test_path: Optional[str] = None):
-    """Executes the multi-agent graph and streams real-time updates."""
+    """Executes the multi-agent graph, streams updates, and saves session in Redis."""
     initial_state = {
         "task": task,
         "test_command": test_path or "",
@@ -139,10 +147,12 @@ def execute_workflow(task: str, test_path: Optional[str] = None):
         "final_summary": None,
     }
 
-    console.print(f"\n[bold blue]🚀 Task Received:[/] {task}\n")
     record_task_in_history(task)
+    final_test_passed = False
+    final_retries = 0
+    final_summary_text = ""
 
-    with console.status("[bold green]QueryNest agents collaborating...[/bold green]", spinner="dots") as status:
+    with console.status("[bold green]Thinking...[/bold green]", spinner="dots") as status:
         try:
             for event in coding_agent_app.stream(initial_state, stream_mode="updates"):
                 for node_name, state_update in event.items():
@@ -168,6 +178,7 @@ def execute_workflow(task: str, test_path: Optional[str] = None):
                     elif node_name == "validator":
                         passed = state_update.get("test_passed", False)
                         test_results = state_update.get("test_results", "")
+                        final_test_passed = passed
                         if passed:
                             console.print("\n  [bold green]✅ Pytest Verification Passed (Exit Code 0)[/bold green]")
                         else:
@@ -178,14 +189,25 @@ def execute_workflow(task: str, test_path: Optional[str] = None):
 
                     elif node_name == "fixer":
                         retry = state_update.get("retry_count", 1)
+                        final_retries = retry
                         console.print(f"  [bold magenta]🔄 Self-Healing Attempt {retry} in progress...[/bold magenta]")
                         status.update("[bold yellow]💻 Coder is applying fixes...[/bold yellow]")
 
                     elif node_name == "summarizer":
                         status.stop()
                         summary = state_update.get("final_summary", "Task Completed.")
+                        final_summary_text = summary
                         console.print(create_summary_panel(summary))
                         status.start()
+
+            # Record completed session to Redis
+            save_session_record({
+                "task": task,
+                "model": settings.DEFAULT_PROVIDER,
+                "test_passed": final_test_passed,
+                "retries": final_retries,
+                "summary": final_summary_text[:300] if final_summary_text else "Completed",
+            })
 
         except Exception as e:
             status.stop()

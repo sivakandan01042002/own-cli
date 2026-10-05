@@ -1,11 +1,15 @@
+import hashlib
 from langchain_core.tools import tool
 from duckduckgo_search import DDGS
+from app.core.redis_client import get_cached_response, set_cached_response
+
 
 @tool
 def search_web(query: str, max_results: int = 5) -> str:
     """
     Searches the internet via DuckDuckGo for up-to-date documentation, API references, or bug fixes.
     Use this tool when you need information not available in the local project codebase.
+    Results are automatically cached in Redis to conserve network and rate limits.
     
     Args:
         query: The search query string (e.g., 'FastAPI middleware CORS example' or 'pytest fixture syntax').
@@ -14,6 +18,12 @@ def search_web(query: str, max_results: int = 5) -> str:
     Returns:
         A formatted string containing titles, snippets, and URLs of the top search results.
     """
+    # Check Redis cache first
+    cache_hash = hashlib.md5(f"websearch:{query}:{max_results}".encode("utf-8")).hexdigest()
+    cached = get_cached_response(cache_hash)
+    if cached:
+        return cached
+
     try:
         results = []
         with DDGS() as ddgs:
@@ -31,7 +41,10 @@ def search_web(query: str, max_results: int = 5) -> str:
         if not results:
             return f"No search results found for query: '{query}'."
 
-        return "\n---\n".join(results)
+        formatted_output = "\n---\n".join(results)
+        # Cache in Redis for 2 hours (7200 seconds)
+        set_cached_response(cache_hash, formatted_output, ttl=7200)
+        return formatted_output
 
     except Exception as e:
         return f"Error executing web search for '{query}': {str(e)}"
