@@ -1,0 +1,25 @@
+# Web Framework & API
+fastapi>=0.115.0
+uvicorn[standard]>=0.30.0
+pydantic>=2.0.0
+pydantic-settings>=2.0.0
+python-dotenv>=1.0.0
+
+# Multi-Agent & LangGraph Core
+langgraph>=0.2.0
+langchain-core>=0.3.0
+
+# Free LLM Providers
+langchain-groq>=0.2.0
+langchain-google-genai>=2.0.0
+
+# Testing & Execution Sandbox Tooling
+pytest>=8.0.0
+
+# CLI & Interactive Terminal UI (QueryNest CLI)
+typer>=0.12.0
+rich>=13.0.0
+prompt_toolkit>=3.0.40
+
+# Web Search Tooling (Zero-Key DuckDuckGo)
+duckduckgo-search>=6.0.0
