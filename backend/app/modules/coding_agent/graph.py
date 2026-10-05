@@ -9,6 +9,7 @@ from app.modules.coding_agent.nodes import (
     summarizer_node,
 )
 from app.modules.coding_agent.edges import (
+    route_initial_intent,
     should_continue_coder,
     should_retry_or_finish,
 )
@@ -24,22 +25,32 @@ workflow.add_node("validator", validator_node)
 workflow.add_node("fixer", fixer_node)
 workflow.add_node("summarizer", summarizer_node)
 
-# 3. Initial flow: START -> planner -> coder
-workflow.add_edge(START, "planner")
+# 3. Smart Initial Routing: START -> (planner OR coder directly for questions)
+workflow.add_conditional_edges(
+    START,
+    route_initial_intent,
+    {
+        "planner": "planner",
+        "coder": "coder",
+    },
+)
+
+# 4. Planner always hands off to Coder
 workflow.add_edge("planner", "coder")
 
-# 4. Coder tool execution loop (Decision 1)
+# 5. Coder tool execution or completion decision
 workflow.add_conditional_edges(
     "coder",
     should_continue_coder,
     {
         "tools": "tools",
         "validator": "validator",
+        "summarizer": "summarizer",
     },
 )
 workflow.add_edge("tools", "coder")
 
-# 5. Validation & self-healing retry loop (Decision 2)
+# 6. Validation & self-healing retry loop
 workflow.add_conditional_edges(
     "validator",
     should_retry_or_finish,
@@ -50,8 +61,8 @@ workflow.add_conditional_edges(
 )
 workflow.add_edge("fixer", "coder")
 
-# 6. Complete task after summary
+# 7. Complete task after summary
 workflow.add_edge("summarizer", END)
 
-# 7. Compile the runnable LangGraph application
+# 8. Compile the runnable LangGraph application
 coding_agent_app = workflow.compile()

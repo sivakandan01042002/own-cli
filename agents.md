@@ -8,15 +8,15 @@ A quick reference guide for the multi-agent system implemented in this workspace
 
 ### 1. 🏗️ Planner Agent (`planner_node`)
 * **Role:** Senior Software Architect
-* **Mission:** Deconstructs the user task into a clean architectural blueprint with file specifications, test plans, and verification commands.
+* **Mission:** Deconstructs coding tasks into clean architectural blueprints with file specifications, test plans, and verification commands.
 * **Input:** `state["task"]`
 * **Output:** `state["plan"]`, initializes `state["retry_count"] = 0`
 
 ### 2. 💻 Coder Agent (`coder_node`)
 * **Role:** Senior Software Engineer
-* **Mission:** Follows the blueprint to generate production-quality code and comprehensive unit tests.
-* **Tools Used:** `write_file`, `read_file`, `list_directory`, `search_web`
-* **Output:** `state["messages"]` (with tool calls for file creation)
+* **Mission:** Inspects existing project files, implements requested features, writes unit tests, or explains project code.
+* **Tools Used:** `write_file`, `read_file`, `list_directory`, `search_web`, `run_terminal_command`, `run_pytest`, `delete_file`
+* **Output:** `state["messages"]` (with tool calls for file inspection/creation)
 
 ### 3. ⚙️ Tool Execution Node (`tool_node`)
 * **Role:** Python Execution Engine (Prebuilt LangGraph `ToolNode`)
@@ -41,14 +41,19 @@ A quick reference guide for the multi-agent system implemented in this workspace
 
 ## 🔀 Decision Edges
 
-1. **`should_continue_coder`**:
-   * Has tool calls $\rightarrow$ `tools` $\rightarrow$ `coder` (Loop)
-   * No tool calls $\rightarrow$ `validator`
+1. **`route_initial_intent` (At `START`)**:
+   * **Question / Code Explanation** (*"what is the purpose of cli.py?"*) $\rightarrow$ `coder` (Direct project inspection, skips Planner & Pytest).
+   * **Coding / Build Task** (*"build a REST API"*) $\rightarrow$ `planner` (Architecture blueprint).
 
-2. **`should_retry_or_finish`**:
-   * Tests Passed $\rightarrow$ `summarizer` $\rightarrow$ `END`
-   * Tests Failed & Retries $< 3 \rightarrow$ `fixer` $\rightarrow$ `coder` (Self-Healing Loop)
-   * Tests Failed & Retries $\ge 3 \rightarrow$ `summarizer` $\rightarrow$ `END`
+2. **`should_continue_coder` (After `coder`)**:
+   * Has tool calls $\rightarrow$ `tools` $\rightarrow$ `coder` (Loop).
+   * Code was modified (`write_file` called) $\rightarrow$ `validator` (Runs Pytest).
+   * No code modified (read-only/Q&A) $\rightarrow$ `summarizer` (Direct answer, skips Pytest).
+
+3. **`should_retry_or_finish` (After `validator`)**:
+   * Tests Passed $\rightarrow$ `summarizer` $\rightarrow$ `END`.
+   * Tests Failed & Retries $< 3 \rightarrow$ `fixer` $\rightarrow$ `coder` (Self-Healing Loop).
+   * Tests Failed & Retries $\ge 3 \rightarrow$ `summarizer` $\rightarrow$ `END`.
 
 ---
 
@@ -62,4 +67,4 @@ A quick reference guide for the multi-agent system implemented in this workspace
 | `delete_file` | `file_path: str` | Delete file from workspace |
 | `run_terminal_command` | `command: str, timeout: int = 30` | Run shell command via subprocess |
 | `run_pytest` | `test_path: str = ""` | Run pytest suite and capture output |
-| `search_web` | `query: str, max_results: int = 5` | DuckDuckGo search for live docs |
+| `search_web` | `query: str, max_results: int = 5` | DuckDuckGo search for live docs (Cached in Redis) |

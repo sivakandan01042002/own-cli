@@ -148,7 +148,7 @@ def execute_workflow(task: str, test_path: Optional[str] = None):
     }
 
     record_task_in_history(task)
-    final_test_passed = False
+    final_test_passed = True
     final_retries = 0
     final_summary_text = ""
 
@@ -162,18 +162,38 @@ def execute_workflow(task: str, test_path: Optional[str] = None):
                         plan_content = state_update.get("plan", "Plan generated.")
                         console.print(create_planner_panel(plan_content))
                         status.start()
-                        status.update("[bold yellow]💻 Coder is writing files and tests...[/bold yellow]")
+                        status.update("[bold yellow]💻 Coder is inspecting project & writing code...[/bold yellow]")
 
                     elif node_name == "coder":
-                        status.update("[bold yellow]⚙️ Coder emitted actions...[/bold yellow]")
-
-                    elif node_name == "tools":
                         messages = state_update.get("messages", [])
                         for msg in messages:
-                            content = getattr(msg, "content", "")
-                            if content:
-                                console.print(f"  [dim green]✔ [Tool Node][/dim green] [dim]{content.strip()}[/dim]")
-                        status.update("[bold cyan]🧪 Validator running pytest...[/bold cyan]")
+                            if hasattr(msg, "tool_calls") and msg.tool_calls:
+                                for tc in msg.tool_calls:
+                                    name = tc.get("name", "")
+                                    args = tc.get("args", {})
+                                    if name == "read_file":
+                                        path = args.get("file_path", "")
+                                        console.print(f"  📖 [dim cyan]Read file:[/] [bold]{path}[/bold]")
+                                    elif name == "write_file":
+                                        path = args.get("file_path", "")
+                                        console.print(f"  📝 [dim green]Created/Updated file:[/] [bold]{path}[/bold]")
+                                    elif name == "delete_file":
+                                        path = args.get("file_path", "")
+                                        console.print(f"  🗑️ [dim red]Deleted file:[/] [bold]{path}[/bold]")
+                                    elif name == "search_web":
+                                        q = args.get("query", "")
+                                        console.print(f"  🔍 [dim yellow]Searched web:[/] [dim]\"{q}\"[/dim]")
+                                    elif name == "list_directory":
+                                        d = args.get("dir_path", ".")
+                                        console.print(f"  📁 [dim]Inspected directory:[/] [bold]{d}[/bold]")
+                                    elif name == "run_terminal_command":
+                                        cmd = args.get("command", "")
+                                        console.print(f"  ⚙️ [dim]Executed command:[/] [dim]{cmd}[/dim]")
+                                    elif name == "run_pytest":
+                                        console.print(f"  🧪 [dim cyan]Running pytest suite...[/dim cyan]")
+
+                    elif node_name == "tools":
+                        status.update("[bold cyan]Processing tool results...[/bold cyan]")
 
                     elif node_name == "validator":
                         passed = state_update.get("test_passed", False)
