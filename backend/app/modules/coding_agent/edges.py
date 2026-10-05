@@ -6,22 +6,34 @@ from app.modules.coding_agent.state import CodingAgentState
 def route_initial_intent(state: CodingAgentState) -> str:
     """
     Analyzes user task intent:
-    - If pure question, explanation, or code inspection: route directly to 'coder' to answer without planning blueprint.
-    - If coding, feature creation, refactoring, or bug fixing: route to 'planner'.
+    - If pure question, explanation, code inspection, or inquiry: route directly to 'coder' to inspect and answer without generating a planner blueprint.
+    - If building a new feature, modifying code, or refactoring: route to 'planner'.
     """
     task = state.get("task", "").strip().lower()
 
-    # Question & explanation intent indicators
-    question_starters = (
-        "what", "how", "why", "where", "can you tell", "tell me",
-        "explain", "describe", "show me", "help me understand",
-        "list the", "what's the purpose", "what is the purpose"
+    # Inspection & question indicators
+    inspection_keywords = (
+        "what", "how", "why", "which", "where", "who", "when",
+        "can you", "could you", "tell me", "explain", "describe",
+        "show", "list", "find", "check", "inspect", "is there",
+        "are there", "functions", "classes", "purpose of",
+        "what's", "what is", "help me understand", "in backend", "in app"
     )
 
-    is_question = any(task.startswith(qs) or f" {qs}" in task for qs in question_starters)
-    is_build_action = any(act in task for act in ("build", "create", "implement", "add", "write", "fix", "refactor", "delete", "remove"))
+    build_actions = (
+        "build", "create", "implement", "add a ", "add new", "write a ",
+        "fix ", "refactor", "delete ", "remove ", "setup ", "scaffold "
+    )
 
-    if is_question and not is_build_action:
+    is_inspection = any(task.startswith(kw) or f" {kw}" in task for kw in inspection_keywords)
+    is_build = any(act in task for act in build_actions)
+
+    # Pure inquiries/inspections go directly to Coder (Inspector)
+    if is_inspection and not is_build:
+        return "coder"
+
+    # Default short inquiries (< 12 words) without explicit build keywords go to Coder
+    if len(task.split()) < 12 and not is_build:
         return "coder"
 
     return "planner"
@@ -49,7 +61,6 @@ def should_continue_coder(state: CodingAgentState) -> str:
     # Check if any file was written or modified in the conversation
     has_file_writes = False
     for msg in messages:
-        # Check tool calls on AI messages
         if hasattr(msg, "tool_calls"):
             for tc in msg.tool_calls:
                 if tc.get("name") in ("write_file", "delete_file"):

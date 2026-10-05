@@ -125,20 +125,24 @@ class CodingAgentState(TypedDict):
 
 ---
 
-## 💻 Interactive Terminal UI (`app/cli.py`)
+## 💻 Interactive Terminal UI (`app/cli.py` & `app/ui/`)
 
-QueryNest includes a framed terminal CLI built on **Prompt Toolkit** and **Rich**:
+QueryNest includes a framed terminal CLI built on **Prompt Toolkit** and **Rich**, modularized under `app/ui/`:
 
-* **Framed Input Box:** 3-line framed prompt with top and bottom dividers and dynamic line wrapping (`FramedPromptSession`).
-* **Slash Command Autocomplete:** Interactive popup menu for slash commands (`/help`, `/session`, `/sessions`, `/model`, `/tools`, `/clear`, `/exit`).
-* **Live Action Badges:** Real-time console badges during agent execution:
-  * `📖 Read file: backend/app/cli.py`
-  * `📝 Created/Updated file: backend/app/core/config.py`
-  * `🗑️ Deleted file: temp.py`
-  * `📁 Inspected directory: backend/app`
-  * `🔍 Searched web: langchain tools documentation`
-  * `⚡ Executed command: pytest tests/ -v`
-* **Cloud Session History:** Automatically persists completed sessions to **Upstash Redis** (`querynest:sessions`).
+* **Modular UI Architecture (`app/ui/`):**
+  * `shimmer.py`: `ShimmerLoader` & `ShimmerText` rendering a cement-grey text base with an animated glowing wave beam that sweeps from start to end repeatedly during operations (`Reading file...`, `Running command...`, `Thinking...`).
+  * `prompt.py`: Framed input box with top/bottom dividers, dynamic line wrapping, and `InMemoryHistory` for **Up/Down arrow key command recall**.
+  * `completer.py`: Interactive autocomplete popup menu for slash commands (`/help`, `/session`, `/model`, `/tools`, `/clear`, `/exit`).
+  * `workflow_stream.py`: Real-time streaming coordinating live shimmer animations, flush-left tool badges, and automatic Redis session persistence.
+* **Animated Shimmer Wave & Flush-Left Action Badges:** Real-time animated cement wave during active execution, transitioning to bold yellow and white badges upon completion:
+  * `Reading file backend/app/cli.py...` ➔ `Read: backend/app/cli.py`
+  * `Writing file backend/app/core/config.py...` ➔ `Write: backend/app/core/config.py`
+  * `Deleting file temp.py...` ➔ `Delete: temp.py`
+  * `Listing files in backend/app...` ➔ `List: backend/app`
+  * `Searching web for langchain...` ➔ `Search: langchain`
+  * `Running command pytest tests/...` ➔ `Bash: pytest tests/ -v`
+* **Real-time Direct Token Streaming:** Responses stream word-by-word with clean borderless formatting.
+* **Cloud Session Persistence:** Automatically saves completed task executions into **Upstash Redis** (`querynest:sessions`).
 
 ---
 
@@ -147,7 +151,9 @@ QueryNest includes a framed terminal CLI built on **Prompt Toolkit** and **Rich*
 | Command | Description |
 | :--- | :--- |
 | `/help` | Displays the interactive CLI command guide. |
-| `/session` / `/sessions` | Lists previous coding sessions stored in Redis with test pass status and timestamps. |
+| `/session` / `/sessions` | Lists the 5 most recent coding sessions stored in Redis with timestamps and test status. |
+| `/session <N>` | Lists the `<N>` most recent sessions (e.g. `/session 10`). |
+| `/session all` | Lists all stored coding sessions. |
 | `/session clear` | Clears all stored session records from Redis. |
 | `/model` | Displays the currently active LLM provider and model ID. |
 | `/model gemini` | Switches active model to **Google Gemini 2.0 Flash**. |
