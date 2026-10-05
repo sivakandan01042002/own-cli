@@ -58,7 +58,7 @@ CLI_STYLE = Style.from_dict({
 
 
 # ---------------------------------------------------------
-# Reusable UI Rendering Helpers (Rich Panels & Dividers)
+# Welcome Banner Panel (Kept Boxed as requested)
 # ---------------------------------------------------------
 def create_banner_panel(workspace_root: str, active_provider: str, active_model: str) -> Panel:
     """Creates the standard welcome banner panel."""
@@ -77,31 +77,22 @@ def create_banner_panel(workspace_root: str, active_provider: str, active_model:
     )
 
 
-def create_planner_panel(plan_markdown: str) -> Panel:
-    """Creates the planner architect blueprint panel."""
-    return Panel(
-        Markdown(plan_markdown),
-        title="[bold green]🏗️ Architect Blueprint (Planner Agent)[/bold green]",
-        border_style=COLORS["success"],
-    )
+# ---------------------------------------------------------
+# Sleek, Borderless UI Output Headers
+# ---------------------------------------------------------
+def print_planner_header(console: Console) -> None:
+    """Renders clean borderless header for Architect Blueprint."""
+    console.print("\n[bold green]🏗️  Architect Blueprint[/bold green]\n")
 
 
-def create_summary_panel(summary_markdown: str) -> Panel:
-    """Creates the final completion report panel."""
-    return Panel(
-        Markdown(summary_markdown),
-        title="[bold cyan]📋 Final Completion Report (QueryNest Summary)[/bold cyan]",
-        border_style=COLORS["primary"],
-    )
+def print_summary_header(console: Console) -> None:
+    """Renders clean borderless header for Summary Report."""
+    console.print("\n[bold cyan]📋 Summary Report[/bold cyan]\n")
 
 
-def create_error_panel(error_text: str) -> Panel:
-    """Creates the standardized error message panel."""
-    return Panel(
-        error_text,
-        border_style=COLORS["error"],
-        title="[bold]Error[/bold]",
-    )
+def print_error_badge(console: Console, error_text: str) -> None:
+    """Renders clean inline error badge without heavy boxed frames."""
+    console.print(f"\n[bold red]❌ Error:[/] [dim red]{error_text}[/dim red]\n")
 
 
 def print_top_divider(console: Console) -> None:

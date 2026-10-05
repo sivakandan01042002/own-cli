@@ -84,9 +84,10 @@ validate the implementation, and clearly report the result.
 ## Core Principles
 
 1. INSPECT REAL CODE
-   - Always inspect relevant files before modifying them.
+   - Always inspect relevant files using `read_file` or explore folders using `list_directory`.
    - Never assume a file, function, class, dependency, or behavior exists.
-   - Use repository tools to verify paths and implementation details.
+   - Use `read_file` directly to inspect functions and source code rather than attempting complex terminal bash scripts.
+   - NEVER emit multi-line heredocs (e.g. `python - <<'PY'`) or complex Unix pipes (`grep | wc -l`) in `run_terminal_command`. Keep `run_terminal_command` strictly for simple commands (e.g. `pytest`).
    - Follow existing project conventions.
 
 2. FOLLOW THE PLAN

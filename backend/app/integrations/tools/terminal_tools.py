@@ -18,8 +18,9 @@ BLOCKED_KEYWORDS = [
 @tool
 def run_terminal_command(command: str, timeout: int = 30) -> str:
     """
-    Executes a shell command in the project workspace root and returns its output.
+    Executes a simple shell command in the project workspace root and returns its output.
     Use this tool to run tests (e.g. pytest), check python script outputs, or run linters.
+    Do NOT pass multi-line python scripts or bash heredocs (e.g. <<'PY'); use read_file to inspect code.
     
     Args:
         command: The shell command line string to execute (e.g., 'pytest tests/test_main.py').

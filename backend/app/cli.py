@@ -1,9 +1,13 @@
 import sys
+if hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+if hasattr(sys.stderr, "reconfigure"):
+    sys.stderr.reconfigure(encoding="utf-8", errors="replace")
+
 from pathlib import Path
 from typing import Optional
 import typer
 from rich.console import Console
-from rich.panel import Panel
 from rich.markdown import Markdown
 
 from langchain_core.messages import HumanMessage
@@ -30,9 +34,8 @@ from app.core.theme import (
     CLI_STYLE,
     DIVIDER,
     create_banner_panel,
-    create_planner_panel,
-    create_summary_panel,
-    create_error_panel,
+    print_planner_header,
+    print_error_badge,
 )
 from app.integrations.tools.file_tools import list_directory
 from app.modules.coding_agent import (
@@ -179,63 +182,82 @@ def execute_workflow(task: str, test_path: Optional[str] = None):
                     if node_name == "planner":
                         status.stop()
                         plan_content = state_update.get("plan", "Plan generated.")
-                        console.print(create_planner_panel(plan_content))
+                        print_planner_header(console)
+                        console.print(Markdown(plan_content))
+                        console.print()
                         status.start()
-                        status.update("[bold yellow]💻 Coder is inspecting project & writing code...[/bold yellow]")
+                        status.update("[bold green]Thinking...[/bold green]")
 
                     elif node_name == "coder":
                         messages = state_update.get("messages", [])
+                        has_tool_calls = False
+                        latest_action = "Thinking..."
                         for msg in messages:
                             if hasattr(msg, "tool_calls") and msg.tool_calls:
+                                has_tool_calls = True
+                                status.stop()
                                 for tc in msg.tool_calls:
                                     name = tc.get("name", "")
                                     args = tc.get("args", {})
                                     if name == "read_file":
                                         path = args.get("file_path", "")
-                                        console.print(f"  📖 [dim cyan]Read file:[/] [bold]{path}[/bold]")
+                                        console.print(f"  [dim]Read:[/] [cyan]{path}[/cyan]")
+                                        latest_action = "Reading file..."
                                     elif name == "write_file":
                                         path = args.get("file_path", "")
-                                        console.print(f"  📝 [dim green]Created/Updated file:[/] [bold]{path}[/bold]")
+                                        console.print(f"  [dim]Write:[/] [green]{path}[/green]")
+                                        latest_action = "Writing file..."
                                     elif name == "delete_file":
                                         path = args.get("file_path", "")
-                                        console.print(f"  🗑️ [dim red]Deleted file:[/] [bold]{path}[/bold]")
+                                        console.print(f"  [dim]Delete:[/] [red]{path}[/red]")
+                                        latest_action = "Deleting file..."
                                     elif name == "list_directory":
                                         path = args.get("dir_path", ".")
-                                        console.print(f"  📁 [dim cyan]Inspected directory:[/] [bold]{path}[/bold]")
+                                        console.print(f"  [dim]List:[/] [cyan]{path}[/cyan]")
+                                        latest_action = "Listing files..."
                                     elif name == "search_web":
                                         query = args.get("query", "")
-                                        console.print(f"  🔍 [dim yellow]Searched web:[/] [bold]{query}[/bold]")
+                                        console.print(f"  [dim]Search:[/] [yellow]{query}[/yellow]")
+                                        latest_action = "Searching web..."
                                     elif name == "run_terminal_command":
                                         cmd = args.get("command", "")
-                                        console.print(f"  ⚡ [dim magenta]Executed command:[/] [bold]{cmd}[/bold]")
+                                        console.print(f"  [dim]Bash:[/] [magenta]{cmd}[/magenta]")
+                                        latest_action = "Running command..."
+                                status.start()
+                                status.update(f"[bold green]{latest_action}[/bold green]")
+
+                        if not has_tool_calls:
+                            # Stop spinner cleanly before Summarizer node streams tokens to stdout
+                            status.stop()
 
                     elif node_name == "tools":
-                        status.update("[bold cyan]Processing tool results...[/bold cyan]")
+                        status.update("[bold green]Thinking...[/bold green]")
 
                     elif node_name == "validator":
                         passed = state_update.get("test_passed", False)
                         test_results = state_update.get("test_results", "")
                         final_test_passed = passed
                         if passed:
-                            console.print("\n  [bold green]✅ Pytest Verification Passed (Exit Code 0)[/bold green]")
+                            status.stop()
+                            console.print("\n  [bold green]✅ Pytest Verification Passed (Exit Code 0)[/bold green]\n")
                         else:
                             console.print("\n  [bold red]❌ Pytest Verification Failed[/bold red]")
                             if test_results:
-                                console.print(f"  [dim red]{test_results[:300]}...[/dim red]")
-                            status.update("[bold magenta]🩹 Fixer is diagnosing bug & self-healing...[/bold magenta]")
+                                console.print(f"  [dim red]{test_results[:300]}...[/dim red]\n")
+                            status.start()
+                            status.update("[bold magenta]🩹 Diagnosing bug & self-healing...[/bold magenta]")
 
                     elif node_name == "fixer":
                         retry = state_update.get("retry_count", 1)
                         final_retries = retry
                         console.print(f"  [bold magenta]🔄 Self-Healing Attempt {retry} in progress...[/bold magenta]")
-                        status.update("[bold yellow]💻 Coder is applying fixes...[/bold yellow]")
+                        status.start()
+                        status.update("[bold green]Applying fixes...[/bold green]")
 
                     elif node_name == "summarizer":
                         status.stop()
-                        summary = state_update.get("final_summary", "Task Completed.")
+                        summary = state_update.get("final_summary", "")
                         final_summary_text = summary
-                        console.print(create_summary_panel(summary))
-                        status.start()
 
             # Record completed session to Redis
             save_session_record({
@@ -249,7 +271,7 @@ def execute_workflow(task: str, test_path: Optional[str] = None):
         except Exception as e:
             status.stop()
             err_msg = format_error_for_user(e)
-            console.print(create_error_panel(err_msg))
+            print_error_badge(console, err_msg)
 
 
 @app.command()
@@ -277,9 +299,9 @@ def chat():
             if category == "command":
                 dispatch_command(payload)
             elif category == "greeting":
-                console.print(Panel(Markdown(payload), border_style="cyan", title="[bold]QueryNest[/bold]"))
+                console.print(Markdown(payload))
             elif category == "unsafe":
-                console.print(Panel(Markdown(payload), border_style="red", title="[bold]Safety Guardrail[/bold]"))
+                console.print(f"\n[bold red]⚠️ Safety Guardrail:[/] {payload}\n")
             elif category == "task":
                 execute_workflow(payload)
 

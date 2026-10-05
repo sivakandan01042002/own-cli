@@ -1,6 +1,14 @@
+import sys
+if hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+if hasattr(sys.stderr, "reconfigure"):
+    sys.stderr.reconfigure(encoding="utf-8", errors="replace")
+
 from typing import Dict, Any, Union, List
 from langchain_core.messages import SystemMessage, HumanMessage, AIMessage, BaseMessage
 from langgraph.prebuilt import ToolNode
+from rich.console import Console
+
 from app.core.config import settings
 from app.core.llm import get_cached_llm, get_cached_coder_llm
 from app.integrations.tools import ALL_TOOLS
@@ -12,6 +20,8 @@ from app.modules.coding_agent.prompts import (
     FIXER_SYSTEM_PROMPT,
     SUMMARIZER_SYSTEM_PROMPT,
 )
+
+console = Console()
 
 
 def extract_text(content: Union[str, List[Any], Any]) -> str:
@@ -158,8 +168,9 @@ def fixer_node(state: CodingAgentState) -> Dict[str, Any]:
 
 def summarizer_node(state: CodingAgentState) -> Dict[str, Any]:
     """
-    Summarizer Node: Formats the final user-facing completion report based ONLY on
-    verified findings from the Coder, tool execution results, and test suite.
+    Summarizer Node with Real-Time Token Streaming:
+    Streams completion report tokens directly to stdout while accumulating the full
+    response for state and Redis persistence.
     """
     llm = get_cached_llm()
     task = state.get("task", "")
@@ -180,7 +191,6 @@ def summarizer_node(state: CodingAgentState) -> Dict[str, Any]:
             tool_name = getattr(msg, "name", "tool")
             content_str = extract_text(getattr(msg, "content", "")).strip()
             if content_str:
-                # Truncate large tool outputs for summary prompt
                 preview = content_str[:600] + ("..." if len(content_str) > 600 else "")
                 conversation_highlights.append(f"Tool Result ({tool_name}):\n{preview}")
 
@@ -202,7 +212,28 @@ def summarizer_node(state: CodingAgentState) -> Dict[str, Any]:
         HumanMessage(content=summary_prompt),
     ]
 
-    response = llm.invoke(messages)
-    summary_text = extract_text(response.content)
+    sys.stdout.write("\n")
+    sys.stdout.flush()
 
-    return {"final_summary": summary_text}
+    # Stream tokens in real time directly to the terminal
+    accumulated_chunks: List[str] = []
+    try:
+        for chunk in llm.stream(messages):
+            token = extract_text(chunk.content)
+            if token:
+                sys.stdout.write(token)
+                sys.stdout.flush()
+                accumulated_chunks.append(token)
+    except Exception:
+        # Fallback to invoke if provider stream fails
+        response = llm.invoke(messages)
+        token = extract_text(response.content)
+        sys.stdout.write(token)
+        sys.stdout.flush()
+        accumulated_chunks.append(token)
+
+    sys.stdout.write("\n\n")
+    sys.stdout.flush()
+
+    full_summary = "".join(accumulated_chunks)
+    return {"final_summary": full_summary}

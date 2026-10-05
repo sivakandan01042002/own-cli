@@ -6,6 +6,16 @@ It integrates specialized AI agents into a deterministic state graph capable of 
 
 ---
 
+## 🏛️ Core Architectural Invariants
+
+To eliminate context leakage, hallucination, and routing bugs, the system enforces three unbreakable design invariants across every turn:
+
+> 1. **Request Seeding Invariant:** Every user request **MUST** populate `state["task"]` and append an initial `HumanMessage` containing the request and workspace context before any routing decision is executed.
+> 2. **Repository Grounding Invariant:** Every agent that requires repository knowledge **MUST** have direct access to repository-aware tools (`list_directory`, `read_file`, `write_file`) or verified repository context in state.
+> 3. **State Persistence Invariant:** Every agent's verified output (`plan`, `coder_findings`, `test_results`, `fixer_analysis`) **MUST** be committed into `CodingAgentState` before graph control transitions to another node.
+
+---
+
 ## 🏗️ Architecture & State Machine Flow
 
 QueryNest routes user intent through a grounded state graph with automatic repository awareness, tool execution, and self-healing validation:
