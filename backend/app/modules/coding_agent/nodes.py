@@ -237,5 +237,5 @@ def summarizer_node(state: CodingAgentState) -> Dict[str, Any]:
 
     response = llm.invoke(messages)
     full_summary = extract_text(response.content)
-
     return {"final_summary": full_summary}
+
