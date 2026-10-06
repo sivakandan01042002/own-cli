@@ -50,6 +50,8 @@ def run_terminal_command(command: str, timeout: int = 60) -> str:
             cwd=str(settings.WORKSPACE_ROOT),
             capture_output=True,
             text=True,
+            encoding="utf-8",
+            errors="replace",
             timeout=actual_timeout,
         )
 

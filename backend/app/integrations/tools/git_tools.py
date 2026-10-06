@@ -56,6 +56,8 @@ def run_git_command(subcommand: str, timeout: int = 30) -> str:
             cwd=str(settings.WORKSPACE_ROOT),
             capture_output=True,
             text=True,
+            encoding="utf-8",
+            errors="replace",
             timeout=timeout,
         )
 
