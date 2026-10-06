@@ -95,8 +95,13 @@ def coder_node(state: CodingAgentState) -> Dict[str, Any]:
 
     response = llm.invoke(formatted_messages)
 
-    # Track any newly modified files if tool calls are requested
+    # Sanitize tool calls to protect ToolNode against hallucinated tool names
+    valid_tool_names = {t.name for t in ALL_TOOLS}
     if hasattr(response, "tool_calls") and response.tool_calls:
+        sanitized_calls = [tc for tc in response.tool_calls if tc.get("name") in valid_tool_names]
+        response.tool_calls = sanitized_calls
+
+        # Track any newly modified files if valid write/delete tool calls are requested
         for tool_call in response.tool_calls:
             name = tool_call.get("name", "")
             args = tool_call.get("args", {})

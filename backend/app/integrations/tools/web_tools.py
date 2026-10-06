@@ -1,7 +1,31 @@
 import hashlib
+import os
+import sys
+import contextlib
+import warnings
+
+# Suppress library deprecation and runtime warnings globally
+warnings.filterwarnings("ignore")
+
 from langchain_core.tools import tool
-from duckduckgo_search import DDGS
+try:
+    from ddgs import DDGS
+except ImportError:
+    from duckduckgo_search import DDGS
+
 from app.core.redis_client import get_cached_response, set_cached_response
+
+
+@contextlib.contextmanager
+def silence_stderr():
+    """Redirects stderr to devnull to silence forced library warnings."""
+    old_stderr = sys.stderr
+    try:
+        with open(os.devnull, "w") as null:
+            sys.stderr = null
+            yield
+    finally:
+        sys.stderr = old_stderr
 
 
 @tool
@@ -26,8 +50,9 @@ def search_web(query: str, max_results: int = 5) -> str:
 
     try:
         results = []
-        with DDGS() as ddgs:
-            raw_results = ddgs.text(query, max_results=max_results)
+        with silence_stderr():
+            with DDGS() as ddgs:
+                raw_results = ddgs.text(query, max_results=max_results)
             for r in raw_results:
                 title = r.get("title", "No Title")
                 href = r.get("href", "No URL")

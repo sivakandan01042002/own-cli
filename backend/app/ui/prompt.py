@@ -29,8 +29,9 @@ class FramedPromptSession:
         @kb.add("enter")
         def _(event):
             text = event.app.current_buffer.text
-            if text.strip():
-                self.history.append_string(text.strip())
+            if not text.strip():
+                return
+            self.history.append_string(text.strip())
             event.app.exit(result=text)
 
         @kb.add("up")

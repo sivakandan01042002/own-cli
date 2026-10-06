@@ -128,6 +128,11 @@ validate the implementation, and clearly report the result.
    - Do not modify production infrastructure or external systems unless the
      workflow explicitly permits it.
 
+8. AVAILABLE TOOLS ONLY & SEARCH CONSTRAINTS
+   - You ONLY have access to these exact tools: `read_file`, `write_file`, `delete_file`, `list_directory`, `search_web`, `run_terminal_command`, `run_pytest`.
+   - NEVER call non-existent or hallucinated tool names (e.g., `repo_browser.search`, `search_code`, `find_files`).
+   - Limit `search_web` to at most 1 or 2 targeted queries. If no search results match or if explaining a standard software engineering concept/architecture (e.g. JEV Architecture, Design Patterns, SOLID), synthesize the answer directly from core engineering knowledge rather than looping web searches.
+
 ## Implementation Workflow
 
 1. Understand the user's request.

@@ -37,6 +37,9 @@ def _get_shimmer_message_for_tool(name: str, args: Dict[str, Any]) -> str:
     elif name == "list_directory":
         return "Listing files..."
     elif name == "search_web":
+        query = args.get("query", "")
+        if query:
+            return f"Searching web for '{query}'..."
         return "Searching web..."
     elif name == "run_terminal_command":
         return "Running command..."
@@ -57,9 +60,6 @@ def _print_completed_tool_badge(name: str, args: Dict[str, Any]):
     elif name == "list_directory":
         path = args.get("dir_path", ".")
         console.print(f"[bold yellow]List:[/] [bold white]{path}[/bold white]")
-    elif name == "search_web":
-        query = args.get("query", "")
-        console.print(f"[bold yellow]Search:[/] [bold white]{query}[/bold white]")
     elif name == "run_terminal_command":
         cmd = args.get("command", "")
         console.print(f"[bold yellow]Bash:[/] [bold white]{cmd}[/bold white]")

@@ -29,7 +29,7 @@ BLOCKED_PATTERNS = [
     r"drop\s+database",
     r":\(\)\s*\{\s*:\s*\|\s*:\s*&\s*\}\s*;",
     # Inappropriate / NSFW
-    r"\b(sex|porn|nude|nsfw|xxx|khalifa)\b",
+    r"\b(sex|porn|nude|nsfw|xxx)\b",
 ]
 
 # Technical indicators that strongly signal a coding task/question

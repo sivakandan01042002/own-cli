@@ -68,3 +68,19 @@ A quick reference guide for the multi-agent system implemented in this workspace
 | `run_terminal_command` | `command: str, timeout: int = 30` | Run shell command via subprocess |
 | `run_pytest` | `test_path: str = ""` | Run pytest suite and capture output |
 | `search_web` | `query: str, max_results: int = 5` | DuckDuckGo search for live docs (Cached in Redis) |
+
+---
+
+## 🛡️ Reliability & Guardrail Rules
+
+1. **Strict Tool Name Enforcement & Sanitization**:
+   * The Coder agent is strictly restricted to the 7 tools listed above.
+   * `coder_node` automatically sanitizes `tool_calls` by filtering out any hallucinated tool names (e.g. `repo_browser.search`) before handing off to `ToolNode`, preventing runtime validation crashes.
+
+2. **Web Search Loop Protection**:
+   * Limit `search_web` to a maximum of 2 queries per task.
+   * If search yields no results or if answering standard software engineering / architectural concepts (e.g., JEV Architecture, design patterns), synthesize the answer directly from core knowledge rather than looping.
+
+3. **Clean Output & Warning Suppression**:
+   * Third-party library deprecation warnings (e.g., `duckduckgo_search` / `ddgs`) must be suppressed internally with `warnings.filterwarnings` so `stderr` never pollutes the user's terminal UI.
+
