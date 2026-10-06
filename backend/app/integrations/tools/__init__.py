@@ -4,6 +4,9 @@ from app.integrations.tools.file_tools import (
     write_file,
     delete_file,
 )
+from app.integrations.tools.git_tools import (
+    run_git_command,
+)
 from app.integrations.tools.terminal_tools import (
     run_terminal_command,
     run_pytest,
@@ -17,6 +20,7 @@ ALL_TOOLS = [
     read_file,
     write_file,
     delete_file,
+    run_git_command,
     run_terminal_command,
     run_pytest,
     search_web,
@@ -27,8 +31,10 @@ __all__ = [
     "read_file",
     "write_file",
     "delete_file",
+    "run_git_command",
     "run_terminal_command",
     "run_pytest",
     "search_web",
     "ALL_TOOLS",
 ]
+

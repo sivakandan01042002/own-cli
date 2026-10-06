@@ -28,3 +28,10 @@ prompt_toolkit>=3.0.40
 
 # Web Search Tooling (Zero-Key DuckDuckGo)
 ddgs>=9.0.0
+
+# Document & Spreadsheet Generation
+python-docx>=1.1.0
+openpyxl>=3.1.2
+
+# 3rd-Party HTTP & API Connectivity
+httpx>=0.28.0

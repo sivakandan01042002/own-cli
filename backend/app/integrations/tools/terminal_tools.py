@@ -16,24 +16,32 @@ BLOCKED_KEYWORDS = [
 
 
 @tool
-def run_terminal_command(command: str, timeout: int = 30) -> str:
+def run_terminal_command(command: str, timeout: int = 60) -> str:
     """
-    Executes a simple shell command in the project workspace root and returns its output.
-    Use this tool to run tests (e.g. pytest), check python script outputs, or run linters.
-    Do NOT pass multi-line python scripts or bash heredocs (e.g. <<'PY'); use read_file to inspect code.
+    Executes shell and system commands in the project workspace root.
+    
+    Supported use cases:
+    - Package Managers: 'npm install', 'pip install <pkg>', 'yarn add <pkg>', 'pnpm i', 'uv pip install'
+    - API & 3rd-Party Testing: 'curl -i https://...', 'http GET https://...', REST calls
+    - Build & Containers: 'docker build ...', 'docker-compose up', 'make', 'cargo build'
+    - System Scripts: PowerShell ('powershell -Command "..."'), Bash ('.sh'), Batch ('.bat')
+    - Testing & Linters: 'pytest', 'flake8', 'mypy', 'black --check'
     
     Args:
-        command: The shell command line string to execute (e.g., 'pytest tests/test_main.py').
-        timeout: Maximum execution time in seconds (default is 30).
+        command: The shell command line string to execute.
+        timeout: Maximum execution time in seconds (default is 60, can be set up to 300 for long builds/installs).
         
     Returns:
-        A string containing exit code, stdout, and stderr.
+        Structured output containing exit code, stdout, and stderr.
     """
-    # Safety check
+    # Safety check against destructive disk/system damage
     command_lower = command.lower()
     for blocked in BLOCKED_KEYWORDS:
         if blocked in command_lower:
             return f"Error: Command blocked for security reasons (contains '{blocked}')."
+
+    # Clamp timeout between 5s and 300s
+    actual_timeout = max(5, min(timeout, 300))
 
     try:
         result = subprocess.run(
@@ -42,7 +50,7 @@ def run_terminal_command(command: str, timeout: int = 30) -> str:
             cwd=str(settings.WORKSPACE_ROOT),
             capture_output=True,
             text=True,
-            timeout=timeout,
+            timeout=actual_timeout,
         )
 
         output_parts = [f"Exit Code: {result.returncode}"]
@@ -59,7 +67,7 @@ def run_terminal_command(command: str, timeout: int = 30) -> str:
         return "\n\n".join(output_parts)
 
     except subprocess.TimeoutExpired:
-        return f"Error: Command timed out after {timeout} seconds."
+        return f"Error: Command timed out after {actual_timeout} seconds."
     except Exception as e:
         return f"Error executing command: {str(e)}"
 

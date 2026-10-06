@@ -54,6 +54,8 @@ def _get_shimmer_message_for_tool(name: str, args: Dict[str, Any]) -> str:
         if query:
             return f"Searching web for '{query}'..."
         return "Searching web..."
+    elif name == "run_git_command":
+        return "Running git command..."
     elif name == "run_terminal_command":
         return "Running command..."
     return "Executing action..."
@@ -70,6 +72,11 @@ def _print_completed_tool_badge(name: str, args: Dict[str, Any]):
     elif name == "delete_file":
         path = _format_full_path(args.get("file_path", ""))
         console.print(f"[bold yellow]Delete:[/] [white]{path}[/white]")
+    elif name == "run_git_command":
+        subcmd = args.get("subcommand", "").strip()
+        if subcmd.lower().startswith("git "):
+            subcmd = subcmd[4:]
+        console.print(f"[bold yellow]Git:[/] [white]git {subcmd}[/white]")
     elif name == "run_terminal_command":
         cmd = args.get("command", "")
         console.print(f"[bold yellow]Bash:[/] [white]{cmd}[/white]")
