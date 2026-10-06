@@ -11,26 +11,34 @@ It integrates specialized AI agents into a deterministic state graph capable of 
 To eliminate context leakage, hallucination, and routing bugs, the system enforces three unbreakable design invariants across every turn:
 
 > 1. **Request Seeding Invariant:** Every user request **MUST** populate `state["task"]` and append an initial `HumanMessage` containing the request and workspace context before any routing decision is executed.
-> 2. **Repository Grounding Invariant:** Every agent that requires repository knowledge **MUST** have direct access to repository-aware tools (`list_directory`, `read_file`, `write_file`) or verified repository context in state.
+> 2. **Repository Grounding Invariant:** Every agent that requires repository knowledge **MUST** have direct access to repository-aware tools (`list_directory`, `read_file`, `write_file`, `run_git_command`) or verified repository context in state.
 > 3. **State Persistence Invariant:** Every agent's verified output (`plan`, `coder_findings`, `test_results`, `fixer_analysis`) **MUST** be committed into `CodingAgentState` before graph control transitions to another node.
 
 ---
 
 ## 🏗️ Architecture & State Machine Flow
 
-QueryNest routes user intent through a grounded state graph with automatic repository awareness, tool execution, and self-healing validation:
+QueryNest routes user intent through a grounded state graph with automatic repository awareness, pre-tool confirmation gates, and self-healing validation:
 
 ```mermaid
 flowchart TD
-    START([User Prompt / Task]) --> router{Intent Router<br/>route_initial_intent}
+    START([User Prompt / Task]) --> triage{Input Triage<br/>triage_user_input}
+    
+    triage -- "Greeting / Pleasantry" --> greeting[Direct Response<br/>0 Tool Calls]
+    triage -- "Slash Command" --> menu[Interactive Menu Picker<br/>Prompt Pre-fill]
+    triage -- "Coding Task" --> router{Intent Router<br/>route_initial_intent}
     
     router -- "Question / Code Inspection" --> coder[2. Coder / Inspector Node<br/>Reads real repository files]
     router -- "Build / Feature Implementation" --> planner[1. Planner Node<br/>Architect Blueprint]
     
-    planner --> coder
+    planner --> plan_gate{Plan Permission Gate<br/>[1] Yes  [2] No}
+    plan_gate -- "Yes, Do It" --> coder
+    plan_gate -- "No, Cancel" --> cancel[Cancel Workflow]
     
     coder -->|should_continue_coder| tool_check{Tools Requested?}
-    tool_check -- "Tool calls present" --> tools[3. Tool Execution Node<br/>Disk CRUD & Subprocess Tools]
+    tool_check -- "Tool calls present" --> tool_gate{Pre-Tool Permission Gate<br/>[1] Yes  [2] No}
+    tool_gate -- "Yes, Do It" --> tools[3. Tool Execution Node<br/>Disk CRUD, Git & Terminal Tools]
+    tool_gate -- "No, Cancel" --> cancel_tool[Cancel Tool Execution]
     tools --> coder
     
     tool_check -- "Code Modified (write_file)" --> validator[4. Validator Node<br/>Pytest Test Runner]
@@ -51,8 +59,8 @@ flowchart TD
 | Node | Specialist Role | Mission & Tools | State Contract Updates |
 | :--- | :--- | :--- | :--- |
 | **`planner`** | 🏗️ Senior Software Architect | Deconstructs coding tasks against live `repository_tree` into clean architectural blueprints. Pure planning — never writes code. | `plan`, `retry_count=0`, `test_passed=False` |
-| **`coder`** | 💻 Senior Software Engineer | Inspects real workspace files with tools, implements code & unit tests according to the blueprint, or explains project code. | `messages` (tool calls), `coder_findings` |
-| **`tools`** | ⚙️ Tool Execution Node | Prebuilt LangGraph `ToolNode` that executes tool calls on disk or over HTTP and injects results back into conversation memory. | `ToolMessage` (tool outputs) |
+| **`coder`** | 💻 Senior Software Engineer | Inspects real workspace files with tools, executes safe Git workflows, implements code & unit tests, or explains project code. | `messages` (tool calls), `coder_findings` |
+| **`tools`** | ⚙️ Tool Execution Node | Prebuilt LangGraph `ToolNode` that executes tool calls on disk, via git, or over HTTP and injects results back into conversation memory. | `ToolMessage` (tool outputs) |
 | **`validator`** | 🧪 QA & Test Inspector | Executes `pytest` in a background subprocess to test newly created code against unit test suites. | `test_results`, `test_passed` (bool) |
 | **`fixer`** | 🩹 Debugger & QA Lead | Triggered on test failure. Analyzes tracebacks, isolates true root causes from symptoms, and gives precise fix instructions. | `retry_count += 1`, `fixer_analysis`, fix instructions in `messages` |
 | **`summarizer`** | 📋 Technical Writer | Produces a clean, factual completion report based ONLY on verified tool executions and test outputs. | `final_summary` |
@@ -119,7 +127,8 @@ class CodingAgentState(TypedDict):
 | `read_file` | `file_path: str` | Reads file content with line numbers for inspection and debugging. |
 | `write_file` | `file_path: str, content: str` | Creates or updates files on disk, auto-creating missing directories. |
 | `delete_file` | `file_path: str` | Safely removes files from the workspace. |
-| `run_terminal_command` | `command: str, timeout: int = 30` | Executes shell commands in a sandboxed subprocess. |
+| `run_git_command` | `subcommand: str, timeout: int = 30` | Safe git execution (`status`, `diff`, `branch`, `commit`, `log`) with UTF-8 encoding. |
+| `run_terminal_command` | `command: str, timeout: int = 60` | Executes shell commands in a sandboxed subprocess. |
 | `run_pytest` | `test_path: str = ""` | Runs pytest test suite and captures exit codes, stdout, and tracebacks. |
 | `search_web` | `query: str, max_results: int = 5` | DuckDuckGo search integration cached in Redis. |
 
@@ -129,22 +138,23 @@ class CodingAgentState(TypedDict):
 
 QueryNest includes a framed terminal CLI built on **Prompt Toolkit** and **Rich**, modularized under `app/ui/`:
 
-* **Modular UI Architecture (`app/ui/`):**
-  * `markdown_stream.py`: `stream_live_markdown` reusable UI component that streams LLM tokens in real time at 15fps while rendering fully styled Rich Markdown.
-  * `shimmer.py`: `ShimmerLoader` & `ShimmerText` rendering a cement-grey text base with an animated glowing green wave beam that sweeps from start to end repeatedly during operations (`Reading file...`, `Running command...`, `Analyzing codebase...`).
-  * `prompt.py`: Framed input box with top/bottom dividers, dynamic line wrapping, and `InMemoryHistory` for **Up/Down arrow key command recall**.
-  * `completer.py`: Interactive autocomplete popup menu for slash commands (`/help`, `/session`, `/model`, `/tools`, `/clear`, `/exit`).
-  * `workflow_stream.py`: Real-time streaming coordinating live shimmer animations, flush-left tool badges, and automatic Redis session persistence.
-* **Animated Shimmer Wave & Flush-Left Action Badges:** Real-time animated cement wave with neutral scrolling dot during active execution, transitioning to bold yellow and white badges upon completion:
-  * `⠋ Reading file...` ➔ `Read: backend/app/cli.py`
-  * `⠋ Writing file...` ➔ `Write: backend/app/core/config.py`
-  * `⠋ Deleting file...` ➔ `Delete: temp.py`
-  * `⠋ Listing files...` ➔ `List: backend/app`
-  * `⠋ Searching web...` ➔ `Search: langchain`
-  * `⠋ Running command...` ➔ `Bash: pytest tests/ -v`
-  * Dynamic context loaders: `⠋ Analyzing task...`, `⠋ Analyzing codebase...`, `⠋ Analyzing findings...`, `⠋ Diagnosing bug & self-healing...`
-* **Real-time Direct Token Streaming:** Responses stream word-by-word with clean borderless formatting.
-* **Cloud Session Persistence:** Automatically saves completed task executions into **Upstash Redis** (`querynest:sessions`).
+* **Interactive Arrow-Key Menu Picker (`menu.py`):**
+  * Full terminal arrow navigation (`↑` / `↓` or `k` / `j`) with active blue pointer (`  > `).
+  * Auto-erasure on select/dismiss (`erase_when_done=True`) leaving a pristine terminal history.
+* **Prompt Buffer Pre-Filling (`cli.py`):**
+  * Selecting a previous task from `/sessions` or a command from `/help` automatically loads it into the input prompt buffer (`❯ <selected_item>`), ready for immediate execution or editing.
+* **Pre-Tool Permission Confirmation Gate (`dialogs.py`):**
+  * Displays requested tool actions (e.g. `Git: git status`) and prompts for confirmation (`[1] Yes, Do It`, `[2] No, Cancel / Skip`) before executing dangerous disk or git modifications.
+* **Semantic Triage & Anti-Overwork Guardrails (`guardrails.py`):**
+  * Classifies natural language inputs. Expressions of appreciation (*"Great work. Thanks!"*, *"looks good"*) are triaged as greetings with 0 tool calls and no unprompted git commits.
+* **Framed Native Input Prompt (`prompt.py`):**
+  * Native top and bottom window dividers (`Window(char="─")`) framing the active input line, with floating autocomplete dropdown for `/` commands.
+* **Live Shimmer Wave Animations (`shimmer.py`):**
+  * Real-time animated cement wave with green shimmering dots during active tool execution (`Reading file...`, `Running command...`, `Analyzing codebase...`).
+* **Live Markdown Streaming (`markdown_stream.py`):**
+  * Streams LLM responses with bold white section headings and rounded boxed tables.
+* **Session Persistence (`redis_client.py`):**
+  * Automatically records completed task sessions to Redis with relative elapsed timestamps (`just now`, `15m ago`, `2h ago`).
 
 ---
 
@@ -152,18 +162,16 @@ QueryNest includes a framed terminal CLI built on **Prompt Toolkit** and **Rich*
 
 | Command | Description |
 | :--- | :--- |
-| `/help` | Displays the interactive CLI command guide. |
-| `/session` / `/sessions` | Lists the 5 most recent coding sessions stored in Redis with timestamps and test status. |
-| `/session <N>` | Lists the `<N>` most recent sessions (e.g. `/session 10`). |
-| `/session all` | Lists all stored coding sessions. |
+| `/help` | Opens the interactive command picker with arrow-key navigation and prompt pre-fill. |
+| `/sessions` / `/session` | Opens the interactive session picker displaying previous tasks and relative elapsed time. |
 | `/session clear` | Clears all stored session records from Redis. |
 | `/model` | Displays the currently active LLM provider and model ID. |
 | `/model gemini` | Switches active model to **Google Gemini 2.0 Flash**. |
 | `/model groq` | Switches active model to **Groq GPT-OSS 120B**. |
-| `/tools` | Lists all registered tools and their functional signatures. |
+| `/tools` | Lists all 8 registered tools and their functional signatures. |
 | `/history` | Displays task history for the current terminal session. |
 | `/clear` | Clears the terminal screen. |
-| `/exit` | Gracefully closes QueryNest. |
+| `/exit` / `/quit` | Gracefully closes QueryNest. |
 
 ---
 
@@ -173,6 +181,9 @@ QueryNest includes a framed terminal CLI built on **Prompt Toolkit** and **Rich*
 ```bash
 # Clone repository
 cd ai-learning-multi-agent
+
+# Create or activate Conda environment
+conda activate ai_app_env
 
 # Configure environment variables
 cp backend/.env.example backend/.env
@@ -185,18 +196,17 @@ GROQ_API_KEY=gsk_...
 GEMINI_API_KEY=AIzaSy...
 
 # Provider selection: 'groq' or 'gemini'
-DEFAULT_PROVIDER=groq
+DEFAULT_PROVIDER=gemini
 
 # Redis Session Storage (Upstash or Local)
-UPSTASH_REDIS_REST_URL=https://your-upstash-redis.upstash.io
-UPSTASH_REDIS_REST_TOKEN=your_token_here
+REDIS_URL=rediss://default:your_token@your-host.upstash.io:6379
 ```
 
 ### 3. Running the CLI
 ```bash
 # Start the interactive chat interface
-python -m app.cli chat
+python backend/app/cli.py chat
 
 # Or run a single task directly
-python -m app.cli run "Build a REST API with FastAPI"
+python backend/app/cli.py run "Build a REST API with FastAPI"
 ```
