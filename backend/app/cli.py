@@ -13,7 +13,7 @@ from pathlib import Path
 from typing import Optional
 import typer
 from rich.console import Console
-from rich.markdown import Markdown
+
 
 # Ensure backend root is in sys.path
 backend_root = Path(__file__).resolve().parent.parent

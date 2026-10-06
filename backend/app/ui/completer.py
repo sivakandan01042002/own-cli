@@ -1,5 +1,5 @@
-from typing import Optional
 from prompt_toolkit.completion import Completer, Completion
+
 
 
 class SlashCommandCompleter(Completer):

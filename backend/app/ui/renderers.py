@@ -1,13 +1,9 @@
 """Presentation and rendering components for QueryNest CLI."""
 from pathlib import Path
-from typing import List, Tuple, Dict, Any, Optional
+from typing import List, Tuple, Dict, Any
 from rich.console import Console
-from rich.markdown import Markdown
-from rich.panel import Panel
-from rich.text import Text
 
 from app.core.config import settings
-from app.core.theme import COLORS
 
 console = Console()
 
@@ -47,27 +43,6 @@ def render_session_list(sessions: List[Dict[str, Any]], format_time_fn, limit: i
         console.print(f"{prefix}{title_styled}{spacing}[#a0a0a0]{time_str}[/#a0a0a0]")
 
 
-def render_action_badge(tool_name: str, args: Dict[str, Any]):
-    """Renders permanent action badges for executed tools."""
-    if tool_name == "read_file":
-        path = _format_full_path(args.get("file_path", ""))
-        console.print(f"[bold yellow]Read:[/] [white]{path}[/white]")
-    elif tool_name == "write_file":
-        path = _format_full_path(args.get("file_path", ""))
-        console.print(f"[bold yellow]Write:[/] [white]{path}[/white]")
-    elif tool_name == "delete_file":
-        path = _format_full_path(args.get("file_path", ""))
-        console.print(f"[bold yellow]Delete:[/] [white]{path}[/white]")
-    elif tool_name == "run_git_command":
-        subcmd = args.get("subcommand", "").strip()
-        if subcmd.lower().startswith("git "):
-            subcmd = subcmd[4:]
-        console.print(f"[bold yellow]Git:[/] [white]git {subcmd}[/white]")
-    elif tool_name == "run_terminal_command":
-        cmd = args.get("command", "")
-        console.print(f"[bold yellow]Bash:[/] [white]{cmd}[/white]")
-
-
 def _format_full_path(path_str: str) -> str:
     """Formats path to normalized full absolute path with forward slashes."""
     if not path_str:
@@ -78,3 +53,47 @@ def _format_full_path(path_str: str) -> str:
     else:
         p = p.resolve()
     return str(p).replace("\\", "/")
+
+
+def _extract_path_payload(args: Dict[str, Any]) -> str:
+    """Extracts and formats file paths."""
+    return _format_full_path(args.get("file_path") or args.get("path") or "")
+
+
+def _extract_git_payload(args: Dict[str, Any]) -> str:
+    """Extracts and normalizes git commands."""
+    subcmd = args.get("subcommand", "").strip()
+    if subcmd.lower().startswith("git "):
+        subcmd = subcmd[4:]
+    return f"git {subcmd}"
+
+
+def _extract_bash_payload(args: Dict[str, Any]) -> str:
+    """Extracts commands, search queries, directory listings, or primary values."""
+    if "command" in args:
+        return str(args["command"])
+    if "query" in args:
+        return str(args["query"])
+    if "dir_path" in args:
+        return f"ls {args['dir_path']}"
+    return next(iter(args.values())) if len(args) == 1 else str(args)
+
+
+# Smart Tool Category Registry
+TOOL_BADGE_REGISTRY: Dict[str, Tuple[str, Any]] = {
+    "read_file": ("Read", _extract_path_payload),
+    "write_file": ("Write", _extract_path_payload),
+    "delete_file": ("Delete", _extract_path_payload),
+    "run_git_command": ("Git", _extract_git_payload),
+    "run_terminal_command": ("Bash", _extract_bash_payload),
+    "search_web": ("Bash", _extract_bash_payload),
+    "list_directory": ("Bash", _extract_bash_payload),
+}
+
+
+def render_action_badge(tool_name: str, args: Dict[str, Any]):
+    """Renders permanent action badges dynamically via smart registry lookup."""
+    prefix, extractor = TOOL_BADGE_REGISTRY.get(tool_name, ("Bash", _extract_bash_payload))
+    payload = extractor(args) if extractor else str(args)
+    console.print(f"[bold yellow]{prefix}:[/] [white]{payload}[/white]")
+

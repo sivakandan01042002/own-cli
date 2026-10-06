@@ -8,8 +8,8 @@ if hasattr(sys.stderr, "reconfigure"):
 from prompt_toolkit.styles import Style
 from rich.console import Console
 from rich.panel import Panel
-from rich.markdown import Markdown
 from rich.theme import Theme
+
 
 # ---------------------------------------------------------
 # Semantic Color Palette & Rich Theme

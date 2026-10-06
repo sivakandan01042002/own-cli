@@ -1,8 +1,7 @@
 from datetime import datetime
-from typing import List, Any, Optional, Tuple, Dict
+from typing import List, Any, Optional
 from rich.console import Console
 
-from rich.markdown import Markdown
 
 from app.core.config import settings
 from app.core.redis_client import get_session_records, clear_session_records

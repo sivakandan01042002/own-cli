@@ -1,6 +1,6 @@
-"""Interactive UI dialogs and permission prompt components using Prompt Toolkit & Rich."""
-from typing import Tuple, List, Dict, Any
+from typing import Tuple
 from rich.console import Console
+
 from rich.prompt import Prompt
 
 console = Console()

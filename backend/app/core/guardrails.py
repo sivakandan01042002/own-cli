@@ -1,5 +1,6 @@
 import re
-from typing import Tuple, Literal, Optional, Dict, Any
+from typing import Tuple, Literal, Optional, Dict
+
 
 # Strict regex patterns for standalone greetings and pleasantries
 PURE_GREETING_PATTERNS = [

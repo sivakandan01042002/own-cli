@@ -1,6 +1,6 @@
 import subprocess
-import shlex
 import sys
+
 from langchain_core.tools import tool
 from app.core.config import settings
 
