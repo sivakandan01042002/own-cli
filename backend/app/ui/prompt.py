@@ -7,6 +7,7 @@ from prompt_toolkit.buffer import Buffer
 from prompt_toolkit.history import InMemoryHistory
 from prompt_toolkit.key_binding import KeyBindings, merge_key_bindings
 from prompt_toolkit.key_binding.defaults import load_key_bindings
+from prompt_toolkit.filters import has_completions
 from prompt_toolkit.application import Application
 from prompt_toolkit.completion import Completer
 
@@ -28,17 +29,29 @@ class FramedPromptSession:
 
         @kb.add("enter")
         def _(event):
-            text = event.app.current_buffer.text
+            buf = event.app.current_buffer
+            if buf.complete_state and buf.complete_state.current_completion:
+                buf.apply_completion(buf.complete_state.current_completion)
+                return
+            text = buf.text
             if not text.strip():
                 return
             self.history.append_string(text.strip())
             event.app.exit(result=text)
 
-        @kb.add("up")
+        @kb.add("up", filter=has_completions)
+        def _(event):
+            event.app.current_buffer.auto_up()
+
+        @kb.add("down", filter=has_completions)
+        def _(event):
+            event.app.current_buffer.auto_down()
+
+        @kb.add("up", filter=~has_completions)
         def _(event):
             event.app.current_buffer.history_backward()
 
-        @kb.add("down")
+        @kb.add("down", filter=~has_completions)
         def _(event):
             event.app.current_buffer.history_forward()
 
@@ -61,7 +74,7 @@ class FramedPromptSession:
                 return [("class:prompt", "❯ ")]
             return [("class:prompt", "  ")]
 
-        # Use native Window(char="─") so Prompt Toolkit automatically fills the exact width
+        # Use native Window(char="─") top and bottom dividers
         root = HSplit([
             Window(char="─", style="class:divider", height=1, dont_extend_height=True),
             FloatContainer(

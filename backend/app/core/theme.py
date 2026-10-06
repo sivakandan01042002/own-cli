@@ -33,26 +33,26 @@ CLI_STYLE = Style.from_dict({
     # Prompt symbol style
     "prompt": "ansicyan bold",
     
-    # Inline bottom divider attached directly beneath the prompt
+    # Inline divider attached directly above and beneath the prompt
     "divider": f"fg:{COLORS['muted_fg']}",
     
-    # Autocomplete popup menu container
-    "completion-menu": f"bg:{COLORS['bg_dark']} #ffffff",
+    # Autocomplete popup menu container - flat, clean
+    "completion-menu": "bg:#1e1e1e",
     
-    # Inactive candidate items
-    "completion-menu.completion": f"bg:{COLORS['bg_dark']} #d4d4d4",
+    # Inactive candidate items - white command text
+    "completion-menu.completion": "fg:#ffffff",
     
-    # Selected / Active candidate item
-    "completion-menu.completion.current": f"bg:{COLORS['accent']} #000000 bold",
+    # Selected / Active candidate item - blue highlight with bold white text
+    "completion-menu.completion.current": "bg:#0099ff fg:#ffffff bold",
     
-    # Meta / Description tag for inactive items
-    "completion-menu.meta.completion": f"bg:{COLORS['bg_meta']} #888888",
+    # Meta / Description tag for inactive items - silver / cement
+    "completion-menu.meta.completion": "fg:#a0a0a0",
     
-    # Meta / Description tag for active item
-    "completion-menu.meta.completion.current": "bg:#0099cc #ffffff italic",
+    # Meta / Description tag for active item - light white italic on blue
+    "completion-menu.meta.completion.current": "bg:#0099ff fg:#ffffff italic",
     
     # Autocomplete scrollbar
-    "scrollbar.background": f"bg:{COLORS['bg_dark']}",
+    "scrollbar.background": "bg:#1e1e1e",
     "scrollbar.button": "bg:#555555",
 })
 

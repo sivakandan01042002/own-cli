@@ -1,12 +1,17 @@
 import re
 from typing import Tuple, Literal, Optional, Dict, Any
 
-# Strict regex patterns for standalone greetings (entire text must match greeting intent)
+# Strict regex patterns for standalone greetings and pleasantries
 PURE_GREETING_PATTERNS = [
     r"^(hi|hello|hey|howdy|greetings|sup|yo)(\s+(there|querynest|bot|assistant|friend|everyone))?[\s!.]*$",
     r"^(who\s+are\s+you|what\s+can\s+you\s+do|what\s+is\s+your\s+name)[\s?!.]*$",
     r"^good\s+(morning|afternoon|evening|day)[\s!.]*$",
+    r"^(great|awesome|cool|nice|perfect|good|ok|okay|sounds good|thanks|thank you|thx|cheers|got it|understood|all good)[\s,!.]*(\s*(thanks|thank you|querynest|bro))?[\s!.]*$",
     r"^help[\s!.]*$",
+]
+
+ACKNOWLEDGMENT_PATTERNS = [
+    r"^(great|awesome|cool|nice|perfect|good|ok|okay|sounds good|thanks|thank you|thx|cheers|got it|understood|all good)[\s,!.]*(\s*(thanks|thank you|querynest|bro))?[\s!.]*$",
 ]
 
 # Conversational prefix stripper (e.g. "Hi, ...", "Hey QueryNest, ...")
@@ -42,6 +47,24 @@ TECHNICAL_KEYWORDS = {
 }
 
 
+ACKNOWLEDGMENT_WORDS = {
+    "great", "awesome", "cool", "nice", "perfect", "good", "ok", "okay",
+    "sounds", "thanks", "thank", "you", "thx", "cheers", "got", "it",
+    "understood", "all", "bro", "man", "buddy", "friend", "much", "a",
+    "lot", "so", "querynest", "done", "fine", "helpful"
+}
+
+
+def is_acknowledgment_or_pleasantry(text: str) -> bool:
+    """Checks if input is strictly a conversational acknowledgment or pleasantry."""
+    clean = re.sub(r"[^\w\s]", " ", text.lower()).strip()
+    words = clean.split()
+    if not words:
+        return False
+    has_ack_trigger = any(w in {"thanks", "thank", "great", "awesome", "cool", "perfect", "good", "ok", "okay", "got", "understood", "done", "helpful", "cheers"} for w in words)
+    return all(w in ACKNOWLEDGMENT_WORDS for w in words) and has_ack_trigger
+
+
 def calculate_intent_scores(text: str) -> Dict[str, float]:
     """
     JEV-style Calibrated Intent Analysis:
@@ -55,7 +78,10 @@ def calculate_intent_scores(text: str) -> Dict[str, float]:
     if total_words == 0:
         return {"greeting": 1.0, "task": 0.0}
 
-    # 1. Check if the entire input matches a standalone greeting
+    # 1. Check if the input is an acknowledgment or standalone greeting
+    if is_acknowledgment_or_pleasantry(text):
+        return {"greeting": 0.99, "task": 0.01}
+
     for pattern in PURE_GREETING_PATTERNS:
         if re.match(pattern, cleaned):
             return {"greeting": 0.99, "task": 0.01}
@@ -86,8 +112,10 @@ def is_pure_greeting(text: str) -> bool:
     return scores["greeting"] > 0.70
 
 
-def get_greeting_response() -> str:
-    """Returns a simple, clean greeting message."""
+def get_greeting_response(text: str = "") -> str:
+    """Returns a simple, clean greeting or polite acknowledgment message."""
+    if is_acknowledgment_or_pleasantry(text):
+        return "You're very welcome! Feel free to ask any technical questions or assign another coding task whenever you're ready."
     return "👋 **Hi! I'm QueryNest.** I can help you plan architecture, write code, run unit tests, and auto-fix bugs.\n\nType a coding task to begin, or **/help** for commands."
 
 
@@ -104,13 +132,13 @@ def triage_user_input(text: str) -> Tuple[Literal["command", "greeting", "unsafe
     """
     Classifies user input using calibrated percentage confidence:
     - 'command': Starts with '/'
-    - 'greeting': Standalone casual greeting (Greeting Confidence > 70%)
+    - 'greeting': Standalone casual greeting / acknowledgment (Greeting Confidence > 70%)
     - 'unsafe': Violates safety rules
     - 'task': Valid coding task or technical inquiry (Task Confidence >= 30%)
     """
     trimmed = text.strip()
     if not trimmed:
-        return "greeting", get_greeting_response()
+        return "greeting", get_greeting_response(trimmed)
 
     if trimmed.startswith("/"):
         return "command", trimmed
@@ -121,9 +149,9 @@ def triage_user_input(text: str) -> Tuple[Literal["command", "greeting", "unsafe
 
     scores = calculate_intent_scores(trimmed)
 
-    # Pure greeting with no substantive task
+    # Pure greeting / pleasantry with no substantive task
     if scores["greeting"] > 0.70:
-        return "greeting", get_greeting_response()
+        return "greeting", get_greeting_response(trimmed)
 
     # Extract clean task by stripping conversational prefix if present
     cleaned_task = CONVERSATIONAL_PREFIX_REGEX.sub("", trimmed).strip()

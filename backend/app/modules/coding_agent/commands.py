@@ -1,5 +1,5 @@
-import sys
-from typing import List
+from datetime import datetime
+from typing import List, Any
 from rich.console import Console
 from rich.markdown import Markdown
 
@@ -28,26 +28,63 @@ SLASH_COMMANDS = [
 ]
 
 
+def format_relative_time(dt_input: Any) -> str:
+    """Formats a timestamp string or datetime into concise relative units (e.g., '40m ago', '23h ago', '1d ago', 'Oct 2')."""
+    if not dt_input:
+        return "recently"
+    now = datetime.now()
+    parsed_dt = None
+    if isinstance(dt_input, datetime):
+        parsed_dt = dt_input
+    elif isinstance(dt_input, str):
+        for fmt in ("%Y-%m-%d %H:%M:%S", "%Y-%m-%dT%H:%M:%S", "%Y-%m-%d %H:%M", "%Y-%m-%d"):
+            try:
+                parsed_dt = datetime.strptime(dt_input[:19], fmt)
+                break
+            except Exception:
+                continue
+    if not parsed_dt:
+        return str(dt_input)
+
+    delta = now - parsed_dt
+    seconds = max(0, int(delta.total_seconds()))
+
+    if seconds < 60:
+        return "just now"
+    minutes = seconds // 60
+    if minutes < 60:
+        return f"{minutes}m ago"
+    hours = minutes // 60
+    if hours < 24:
+        return f"{hours}h ago"
+    days = hours // 24
+    if days < 7:
+        return f"{days}d ago"
+    return parsed_dt.strftime("%b %d")
+
+
 def record_task_in_history(task: str):
     """Records an executed coding task into in-memory session history."""
     task_history.append(task)
 
 
 def handle_help(args: str = ""):
-    """Displays the command reference guide."""
-    console.print("\n[bold cyan]Help & Slash Commands[/bold cyan]\n")
+    """Displays the command reference guide in a clean borderless 2-column layout."""
+    console.print()
     commands_info = [
         ("/help", "Display this command reference guide"),
-        ("/session", "List recent coding sessions (e.g. /session 10 or /session all)"),
+        ("/model", "Show active LLM provider (/model gemini or /model groq)"),
+        ("/session", "List recent coding sessions stored in Redis"),
         ("/session clear", "Reset session history in Redis"),
-        ("/model", "Show or switch active LLM provider (/model gemini or /model groq)"),
         ("/tools", "Inspect all registered agent tools and signatures"),
         ("/history", "View tasks submitted in the current live terminal session"),
         ("/clear", "Clear terminal screen"),
         ("/exit", "Close QueryNest session"),
     ]
-    for cmd, desc in commands_info:
-        console.print(f"  [bold cyan]{cmd:<18}[/] [dim]•[/dim]  {desc}")
+    for idx, (cmd, desc) in enumerate(commands_info):
+        prefix = "[bold #0099ff]>[/] " if idx == 0 else "  "
+        cmd_styled = f"[bold white]{cmd:<18}[/bold white]" if idx == 0 else f"[white]{cmd:<18}[/white]"
+        console.print(f"{prefix}{cmd_styled}  [#a0a0a0]{desc}[/#a0a0a0]")
     console.print()
 
 
@@ -67,14 +104,14 @@ def handle_model(args: str = ""):
 
 
 def handle_sessions(args: str = ""):
-    """Displays past coding sessions stored in Redis with limit controls and clean typography."""
+    """Displays past coding sessions stored in Redis with a clean, minimalist 2-column layout."""
     arg_clean = args.strip().lower()
     if arg_clean == "clear":
         clear_session_records()
         console.print("\n[bold yellow]✔ Session records cleared from Redis.[/bold yellow]\n")
         return
 
-    limit = 5
+    limit = 6
     if arg_clean == "all":
         limit = 50
     elif arg_clean.isdigit():
@@ -85,18 +122,28 @@ def handle_sessions(args: str = ""):
         console.print("\n[dim]No previous sessions found in Redis.[/dim]\n")
         return
 
-    console.print(f"\n[bold cyan]📋 Stored Sessions[/bold cyan] [dim]({len(sessions)} recent)[/dim]\n")
-    for idx, s in enumerate(sessions, 1):
-        status_badge = "[bold green]Passed ✅[/bold green]" if s.get("test_passed") else "[bold red]Failed ❌[/bold red]"
-        created_at = s.get("created_at", "Unknown time")
-        task_desc = s.get("task", "No description")
-        model = s.get("model", "default").upper()
-        retries = s.get("retries", 0)
+    console.print()
+    term_width = console.size.width or 80
+    time_col_width = 12
 
-        console.print(f"• [bold cyan]#{idx}[/bold cyan] [bold white]Task:[/] {task_desc}")
-        console.print(f"  [dim]{created_at}[/dim] │ {status_badge} │ [dim yellow]{model}[/dim yellow] (Retries: {retries})\n")
+    for idx, s in enumerate(sessions):
+        prefix = "[bold #0099ff]>[/] " if idx == 0 else "  "
+        raw_task = s.get("task", "Untitled Task").strip().replace("\n", " ")
+        time_str = format_relative_time(s.get("created_at"))
 
-    console.print("[dim]Type /session 10 to see more, or /session clear to reset.[/dim]\n")
+        available_title_width = max(20, term_width - time_col_width - 8)
+        if len(raw_task) > available_title_width:
+            task_title = raw_task[:available_title_width - 3] + "..."
+        else:
+            task_title = raw_task
+
+        title_styled = f"[bold white]{task_title}[/bold white]" if idx == 0 else f"[white]{task_title}[/white]"
+        spacing_count = max(2, term_width - 4 - len(task_title) - len(time_str))
+        spacing = " " * spacing_count
+
+        console.print(f"{prefix}{title_styled}{spacing}[#a0a0a0]{time_str}[/#a0a0a0]")
+
+    console.print()
 
 
 def handle_tools(args: str = ""):
