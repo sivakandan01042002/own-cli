@@ -21,7 +21,7 @@ if str(backend_root) not in sys.path:
     sys.path.insert(0, str(backend_root))
 
 from app.core.guardrails import triage_user_input
-from app.core.theme import CLI_STYLE
+from app.core.theme import CLI_STYLE, RICH_THEME
 from app.modules.coding_agent import dispatch_command
 from app.ui import (
     FramedPromptSession,
@@ -32,7 +32,8 @@ from app.ui import (
 
 # CLI Application & Console Setup
 app = typer.Typer(help="QueryNest Multi-Agent Coding CLI", add_completion=False)
-console = Console()
+console = Console(theme=RICH_THEME)
+
 
 
 @app.command()

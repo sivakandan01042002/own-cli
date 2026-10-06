@@ -12,6 +12,9 @@ from rich.markdown import (
 from rich.table import Table
 
 
+from app.core.theme import RICH_THEME
+
+
 class BoxedTableElement(MarkdownElement):
     """
     Renders standard Markdown tables as a unified, full rounded-border table
@@ -34,7 +37,7 @@ class BoxedTableElement(MarkdownElement):
             pad_edge=True,
             show_edge=True,
             show_lines=True,
-            header_style="bold cyan",
+            header_style="bold white",
             border_style="dim",
             expand=False,
         )
@@ -42,7 +45,7 @@ class BoxedTableElement(MarkdownElement):
         if self.header is not None and self.header.row is not None:
             for column in self.header.row.cells:
                 heading = column.content.copy()
-                heading.stylize("bold cyan")
+                heading.stylize("bold white")
                 table.add_column(heading, overflow="fold")
 
         if self.body is not None:
@@ -67,7 +70,8 @@ def stream_live_markdown(
     Streams text tokens in real time while rendering formatted Rich Markdown with full rounded tables.
     Accumulates and returns the full generated text for state and session storage.
     """
-    console = console or Console()
+    console = console or Console(theme=RICH_THEME)
+
     accumulated_text = ""
     console.print()
 

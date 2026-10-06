@@ -9,9 +9,10 @@ from prompt_toolkit.styles import Style
 from rich.console import Console
 from rich.panel import Panel
 from rich.markdown import Markdown
+from rich.theme import Theme
 
 # ---------------------------------------------------------
-# Semantic Color Palette (Rich & Terminal)
+# Semantic Color Palette & Rich Theme
 # ---------------------------------------------------------
 COLORS = {
     "primary": "cyan",
@@ -25,6 +26,18 @@ COLORS = {
     "bg_meta": "#282828",
     "border": "cyan",
 }
+
+RICH_THEME = Theme({
+    "markdown.h1": "bold white",
+    "markdown.h2": "bold white",
+    "markdown.h3": "bold white",
+    "markdown.h4": "bold white",
+    "markdown.h5": "bold white",
+    "markdown.h6": "bold white",
+    "markdown.link": "bold #0099ff",
+    "markdown.link_url": "dim #a0a0a0",
+})
+
 
 # ---------------------------------------------------------
 # Prompt Toolkit Theme (Centralized Autocomplete & Prompt CSS)

@@ -13,12 +13,14 @@ from app.core.theme import (
     create_banner_panel,
     print_planner_header,
     print_error_badge,
+    RICH_THEME,
 )
 from app.integrations.tools.file_tools import list_directory
 from app.modules.coding_agent.nodes import extract_text
 from app.ui.shimmer import ShimmerLoader
 
-console = Console()
+console = Console(theme=RICH_THEME)
+
 
 
 def print_banner():
