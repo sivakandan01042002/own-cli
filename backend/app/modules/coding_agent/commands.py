@@ -70,7 +70,7 @@ def record_task_in_history(task: str):
 
 def handle_help(args: str = ""):
     """Displays the command reference guide in a clean borderless 2-column layout."""
-    console.print()
+    from app.ui.renderers import render_command_guide
     commands_info = [
         ("/help", "Display this command reference guide"),
         ("/model", "Show active LLM provider (/model gemini or /model groq)"),
@@ -81,11 +81,7 @@ def handle_help(args: str = ""):
         ("/clear", "Clear terminal screen"),
         ("/exit", "Close QueryNest session"),
     ]
-    for idx, (cmd, desc) in enumerate(commands_info):
-        prefix = "[bold #0099ff]>[/] " if idx == 0 else "  "
-        cmd_styled = f"[bold white]{cmd:<18}[/bold white]" if idx == 0 else f"[white]{cmd:<18}[/white]"
-        console.print(f"{prefix}{cmd_styled}  [#a0a0a0]{desc}[/#a0a0a0]")
-    console.print()
+    render_command_guide(commands_info)
 
 
 def handle_model(args: str = ""):
@@ -105,6 +101,7 @@ def handle_model(args: str = ""):
 
 def handle_sessions(args: str = ""):
     """Displays past coding sessions stored in Redis with a clean, minimalist 2-column layout."""
+    from app.ui.renderers import render_session_list
     arg_clean = args.strip().lower()
     if arg_clean == "clear":
         clear_session_records()
@@ -118,32 +115,7 @@ def handle_sessions(args: str = ""):
         limit = min(int(arg_clean), 50)
 
     sessions = get_session_records(limit=limit)
-    if not sessions:
-        console.print("\n[dim]No previous sessions found in Redis.[/dim]\n")
-        return
-
-    console.print()
-    term_width = console.size.width or 80
-    time_col_width = 12
-
-    for idx, s in enumerate(sessions):
-        prefix = "[bold #0099ff]>[/] " if idx == 0 else "  "
-        raw_task = s.get("task", "Untitled Task").strip().replace("\n", " ")
-        time_str = format_relative_time(s.get("created_at"))
-
-        available_title_width = max(20, term_width - time_col_width - 8)
-        if len(raw_task) > available_title_width:
-            task_title = raw_task[:available_title_width - 3] + "..."
-        else:
-            task_title = raw_task
-
-        title_styled = f"[bold white]{task_title}[/bold white]" if idx == 0 else f"[white]{task_title}[/white]"
-        spacing_count = max(2, term_width - 4 - len(task_title) - len(time_str))
-        spacing = " " * spacing_count
-
-        console.print(f"{prefix}{title_styled}{spacing}[#a0a0a0]{time_str}[/#a0a0a0]")
-
-    console.print()
+    render_session_list(sessions, format_relative_time, limit=limit)
 
 
 def handle_tools(args: str = ""):

@@ -47,29 +47,60 @@ TECHNICAL_KEYWORDS = {
 }
 
 
-ACKNOWLEDGMENT_WORDS = {
-    "great", "awesome", "cool", "nice", "perfect", "good", "ok", "okay",
-    "sounds", "thanks", "thank", "you", "thx", "cheers", "got", "it",
-    "understood", "all", "bro", "man", "buddy", "friend", "much", "a",
-    "lot", "so", "querynest", "done", "fine", "helpful"
+# Action verbs indicating a substantive coding or developer request
+ACTION_VERBS = {
+    "build", "create", "make", "fix", "debug", "add", "update", "modify",
+    "change", "delete", "remove", "write", "test", "run", "execute", "install",
+    "commit", "push", "pull", "diff", "checkout", "refactor", "explain",
+    "show", "list", "check", "inspect", "find", "search", "generate",
+    "format", "lint", "deploy", "setup", "start", "stop", "restart",
+}
+
+# Inquisitive question triggers
+QUESTION_WORDS = {"why", "how", "what", "where", "who", "when", "which"}
+
+# Evaluative praise and sentiment expressions
+PRAISE_WORDS = {
+    "great", "awesome", "impressive", "amazing", "wonderful", "fantastic",
+    "super", "superb", "cool", "nice", "perfect", "good", "love", "neat",
+    "slick", "clean", "works", "worked", "helpful", "thanks", "thank",
+    "appreciated", "appreciate", "brilliant", "excellent", "well", "done",
+    "job", "work", "fine", "cheers", "thx",
 }
 
 
 def is_acknowledgment_or_pleasantry(text: str) -> bool:
-    """Checks if input is strictly a conversational acknowledgment or pleasantry."""
+    """
+    Semantically checks if input is an evaluative praise, conversational pleasantry, or greeting
+    by analyzing action verbs, technical code targets, and sentiment intent.
+    """
     clean = re.sub(r"[^\w\s]", " ", text.lower()).strip()
     words = clean.split()
     if not words:
-        return False
-    has_ack_trigger = any(w in {"thanks", "thank", "great", "awesome", "cool", "perfect", "good", "ok", "okay", "got", "understood", "done", "helpful", "cheers"} for w in words)
-    return all(w in ACKNOWLEDGMENT_WORDS for w in words) and has_ack_trigger
+        return True
+
+    has_praise = any(w in PRAISE_WORDS for w in words)
+    has_action = any(w in ACTION_VERBS for w in words)
+    has_question = any(w in QUESTION_WORDS for w in words)
+    has_code_entity = bool(re.search(r"\b\w+\.(py|js|ts|tsx|jsx|json|md|yaml|yml|html|css|sh|bat|txt|sql)\b", text.lower())) or bool(re.search(r"[/\\]\w+", text))
+
+    # If it contains praise and has no actionable code entity or imperative action
+    if has_praise and not (has_action or has_question or has_code_entity):
+        return True
+
+    # If phrase is short evaluative praise without technical targets (e.g. 'great work thanks', 'worked well')
+    if has_praise and len(words) <= 6 and not has_code_entity and not has_question:
+        if not (has_action and any(w in {"file", "code", "repo", "bug", "test", "api", "branch", "commit"} for w in words)):
+            return True
+
+    return False
 
 
 def calculate_intent_scores(text: str) -> Dict[str, float]:
     """
     JEV-style Calibrated Intent Analysis:
     Calculates weighted confidence percentages for 'greeting' vs 'task'
-    rather than blind keyword matching.
+    using semantic action-verb and technical entity analysis.
     """
     cleaned = text.strip().lower()
     words = re.findall(r"\b\w+(?:\.\w+)?\b", cleaned)
@@ -78,7 +109,7 @@ def calculate_intent_scores(text: str) -> Dict[str, float]:
     if total_words == 0:
         return {"greeting": 1.0, "task": 0.0}
 
-    # 1. Check if the input is an acknowledgment or standalone greeting
+    # 1. Semantic praise / pleasantry check
     if is_acknowledgment_or_pleasantry(text):
         return {"greeting": 0.99, "task": 0.01}
 
@@ -87,10 +118,14 @@ def calculate_intent_scores(text: str) -> Dict[str, float]:
             return {"greeting": 0.99, "task": 0.01}
 
     # 2. Count technical / actionable words
-    tech_count = sum(1 for w in words if w in TECHNICAL_KEYWORDS or "." in w or "_" in w)
+    tech_count = sum(1 for w in words if w in TECHNICAL_KEYWORDS or w in ACTION_VERBS)
+    has_code_entity = bool(re.search(r"\b\w+\.(py|js|ts|tsx|jsx|json|md|yaml|yml|html|css|sh|bat|txt|sql)\b", cleaned)) or bool(re.search(r"[/\\]\w+", cleaned))
+    if has_code_entity:
+        tech_count += 3
+
     question_marks = text.count("?")
 
-    # 3. Calculate ratios
+    # 3. Calculate calibrated ratios
     greeting_prefix_match = CONVERSATIONAL_PREFIX_REGEX.match(cleaned)
     greeting_prefix_len = len(greeting_prefix_match.group(0).split()) if greeting_prefix_match else 0
 
@@ -113,10 +148,10 @@ def is_pure_greeting(text: str) -> bool:
 
 
 def get_greeting_response(text: str = "") -> str:
-    """Returns a simple, clean greeting or polite acknowledgment message."""
+    """Returns a concise, compact greeting or polite acknowledgment message."""
     if is_acknowledgment_or_pleasantry(text):
-        return "You're very welcome! Feel free to ask any technical questions or assign another coding task whenever you're ready."
-    return "👋 **Hi! I'm QueryNest.** I can help you plan architecture, write code, run unit tests, and auto-fix bugs.\n\nType a coding task to begin, or **/help** for commands."
+        return "[white]You're very welcome! Let me know if you need anything else.[/white]"
+    return "[white]👋 [bold]Hi! I'm QueryNest[/bold] — your multi-agent coding assistant. Type a task or [bold cyan]/help[/bold cyan] for commands.[/white]"
 
 
 def check_safety_guardrails(text: str) -> Optional[str]:

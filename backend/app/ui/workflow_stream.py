@@ -82,7 +82,7 @@ def _print_completed_tool_badge(name: str, args: Dict[str, Any]):
         console.print(f"[bold yellow]Bash:[/] [white]{cmd}[/white]")
 
 
-def execute_workflow(task: str, test_path: Optional[str] = None):
+def execute_workflow(task: str, test_path: Optional[str] = None, interactive: bool = True):
     """
     Executes the multi-agent graph stream with green animated shimmer text,
     renders live badges upon completion of each tool, streams LLM markdown responses token-by-token,
@@ -157,6 +157,23 @@ def execute_workflow(task: str, test_path: Optional[str] = None):
                         print_planner_header(console)
                         console.print(Markdown(plan_content))
                         console.print()
+
+                        # Modular human-in-the-loop permission & confirmation gate
+                        if interactive:
+                            from app.ui.dialogs import prompt_plan_permission
+                            action, feedback = prompt_plan_permission()
+
+                            if action == "cancel":
+                                console.print("\n[bold yellow]❌ Workflow cancelled by user.[/bold yellow]\n")
+                                return
+                            elif action == "adjust" and feedback:
+                                console.print("\n[bold cyan]🔄 Updating plan with your instructions...[/bold cyan]\n")
+                                return execute_workflow(
+                                    f"{task}\n\nUser Adjustments/Instructions: {feedback}",
+                                    test_path=test_path,
+                                    interactive=interactive,
+                                )
+
                         loader.start("Analyzing codebase...")
 
                     elif node_name == "coder":
@@ -182,8 +199,9 @@ def execute_workflow(task: str, test_path: Optional[str] = None):
                     elif node_name == "tools":
                         # Tool physically completed execution -> Print permanent badges
                         loader.stop()
+                        from app.ui.renderers import render_action_badge
                         for tc in pending_tool_calls:
-                            _print_completed_tool_badge(tc.get("name", ""), tc.get("args", {}))
+                            render_action_badge(tc.get("name", ""), tc.get("args", {}))
                         pending_tool_calls = []
                         # Resume with contextual "Analyzing findings..." while Coder processes outputs
                         loader.start("Analyzing findings...")

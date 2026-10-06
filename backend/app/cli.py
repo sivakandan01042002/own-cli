@@ -51,24 +51,18 @@ def chat():
                 continue
             user_input = user_input.strip()
 
-            if not user_input:
-                continue
-
-            print()
-
             category, payload = triage_user_input(user_input)
 
             if category == "command":
                 dispatch_command(payload)
             elif category == "greeting":
-                console.print(Markdown(payload))
+                console.print(f"{payload}")
             elif category == "unsafe":
-                console.print(f"\n[bold red]⚠️ Safety Guardrail:[/] {payload}\n")
+                console.print(f"[bold red]⚠️ Safety Guardrail:[/] {payload}")
             elif category == "task":
-                execute_workflow(payload)
+                execute_workflow(payload, interactive=True)
 
         except (KeyboardInterrupt, EOFError):
-            console.print("\n[bold yellow]👋 Session closed. Goodbye![/bold yellow]")
             break
 
 
@@ -81,7 +75,7 @@ def run(
     print_banner()
     category, payload = triage_user_input(task)
     if category == "task":
-        execute_workflow(payload, test_path=test_path)
+        execute_workflow(payload, test_path=test_path, interactive=False)
     else:
         console.print(payload)
 
