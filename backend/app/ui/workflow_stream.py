@@ -164,10 +164,10 @@ def execute_workflow(task: str, test_path: Optional[str] = None, interactive: bo
                             action, feedback = prompt_plan_permission()
 
                             if action == "cancel":
-                                console.print("\n[#a0a0a0]Workflow cancelled.[/#a0a0a0]\n")
+                                console.print("[#a0a0a0]Workflow cancelled.[/#a0a0a0]")
                                 return
                             elif action == "adjust" and feedback:
-                                console.print("\n[#a0a0a0]Updating plan with instructions...[/#a0a0a0]\n")
+                                console.print("[#a0a0a0]Updating plan with instructions...[/#a0a0a0]")
                                 return execute_workflow(
                                     f"{task}\n\nUser Adjustments/Instructions: {feedback}",
                                     test_path=test_path,
@@ -191,10 +191,10 @@ def execute_workflow(task: str, test_path: Optional[str] = None, interactive: bo
                                     action, feedback = prompt_tool_permission(pending_tool_calls)
 
                                     if action == "cancel":
-                                        console.print("\n[#a0a0a0]Tool execution cancelled.[/#a0a0a0]\n")
+                                        console.print("[#a0a0a0]Tool execution cancelled.[/#a0a0a0]")
                                         return
                                     elif action == "adjust" and feedback:
-                                        console.print("\n[#a0a0a0]Updating workflow with instructions...[/#a0a0a0]\n")
+                                        console.print("[#a0a0a0]Updating workflow with instructions...[/#a0a0a0]")
                                         return execute_workflow(
                                             f"{task}\n\nUser Adjustments/Instructions: {feedback}",
                                             test_path=test_path,
@@ -245,6 +245,7 @@ def execute_workflow(task: str, test_path: Optional[str] = None, interactive: bo
                         loader.stop()
                         console.print(f"\n[#a0a0a0]Self-Healing Attempt {retry} in progress...[/#a0a0a0]\n")
                         loader.start("Applying fixes...")
+
 
 
                     elif node_name == "summarizer":
