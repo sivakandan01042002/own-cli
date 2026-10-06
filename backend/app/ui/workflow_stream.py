@@ -164,10 +164,10 @@ def execute_workflow(task: str, test_path: Optional[str] = None, interactive: bo
                             action, feedback = prompt_plan_permission()
 
                             if action == "cancel":
-                                console.print("[#a0a0a0]Workflow cancelled.[/#a0a0a0]")
+                                console.print("\n[#a0a0a0]Workflow cancelled.[/#a0a0a0]\n")
                                 return
                             elif action == "adjust" and feedback:
-                                console.print("[#a0a0a0]Updating plan with instructions...[/#a0a0a0]")
+                                console.print("\n[#a0a0a0]Updating plan with instructions...[/#a0a0a0]\n")
                                 return execute_workflow(
                                     f"{task}\n\nUser Adjustments/Instructions: {feedback}",
                                     test_path=test_path,
@@ -191,15 +191,16 @@ def execute_workflow(task: str, test_path: Optional[str] = None, interactive: bo
                                     action, feedback = prompt_tool_permission(pending_tool_calls)
 
                                     if action == "cancel":
-                                        console.print("[#a0a0a0]Tool execution cancelled.[/#a0a0a0]")
+                                        console.print("\n[#a0a0a0]Tool execution cancelled.[/#a0a0a0]\n")
                                         return
                                     elif action == "adjust" and feedback:
-                                        console.print("[#a0a0a0]Updating workflow with instructions...[/#a0a0a0]")
+                                        console.print("\n[#a0a0a0]Updating workflow with instructions...[/#a0a0a0]\n")
                                         return execute_workflow(
                                             f"{task}\n\nUser Adjustments/Instructions: {feedback}",
                                             test_path=test_path,
                                             interactive=interactive,
                                         )
+
 
                                 # Start shimmering with clean action text (e.g. "Reading file...")
                                 first_tc = pending_tool_calls[0]
