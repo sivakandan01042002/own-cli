@@ -19,9 +19,9 @@ class Settings(BaseSettings):
     GROQ_API_KEY: str = ""
     GEMINI_API_KEY: str = ""
 
-    DEFAULT_PROVIDER: str = "groq"  # "groq" or "gemini"
+    DEFAULT_PROVIDER: str = "gemini"  # "groq" or "gemini"
     GROQ_MODEL: str = "openai/gpt-oss-120b"
-    GEMINI_MODEL: str = "gemini-3.8-flash"
+    GEMINI_MODEL: str = "gemini-3.5-flash-lite"
 
     # ---------------------------------------------------------
     # 1. Cloud Redis (Upstash / Redis Cloud / Local)

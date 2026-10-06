@@ -1,3 +1,4 @@
+from pathlib import Path
 from typing import Optional, List, Dict, Any
 from rich.console import Console
 from rich.markdown import Markdown
@@ -26,6 +27,18 @@ def print_banner():
     console.print(create_banner_panel(settings.WORKSPACE_ROOT, settings.DEFAULT_PROVIDER, active_model))
 
 
+def _format_full_path(path_str: str) -> str:
+    """Formats path to normalized full absolute path with forward slashes."""
+    if not path_str:
+        return ""
+    p = Path(path_str)
+    if not p.is_absolute():
+        p = (settings.WORKSPACE_ROOT / p).resolve()
+    else:
+        p = p.resolve()
+    return str(p).replace("\\", "/")
+
+
 def _get_shimmer_message_for_tool(name: str, args: Dict[str, Any]) -> str:
     """Generates clean in-progress text for the active tool without redundant path clutter."""
     if name == "read_file":
@@ -49,20 +62,17 @@ def _get_shimmer_message_for_tool(name: str, args: Dict[str, Any]) -> str:
 def _print_completed_tool_badge(name: str, args: Dict[str, Any]):
     """Prints the permanent flush-left action badge upon tool execution completion."""
     if name == "read_file":
-        path = args.get("file_path", "")
-        console.print(f"[bold yellow]Read:[/] [bold white]{path}[/bold white]")
+        path = _format_full_path(args.get("file_path", ""))
+        console.print(f"[bold yellow]Read:[/] [white]{path}[/white]")
     elif name == "write_file":
-        path = args.get("file_path", "")
-        console.print(f"[bold yellow]Write:[/] [bold white]{path}[/bold white]")
+        path = _format_full_path(args.get("file_path", ""))
+        console.print(f"[bold yellow]Write:[/] [white]{path}[/white]")
     elif name == "delete_file":
-        path = args.get("file_path", "")
-        console.print(f"[bold yellow]Delete:[/] [bold white]{path}[/bold white]")
-    elif name == "list_directory":
-        path = args.get("dir_path", ".")
-        console.print(f"[bold yellow]List:[/] [bold white]{path}[/bold white]")
+        path = _format_full_path(args.get("file_path", ""))
+        console.print(f"[bold yellow]Delete:[/] [white]{path}[/white]")
     elif name == "run_terminal_command":
         cmd = args.get("command", "")
-        console.print(f"[bold yellow]Bash:[/] [bold white]{cmd}[/bold white]")
+        console.print(f"[bold yellow]Bash:[/] [white]{cmd}[/white]")
 
 
 def execute_workflow(task: str, test_path: Optional[str] = None):

@@ -1,4 +1,9 @@
 import sys
+import warnings
+
+# Suppress library deprecation and AFC runtime notices globally
+warnings.filterwarnings("ignore")
+
 if hasattr(sys.stdout, "reconfigure"):
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 if hasattr(sys.stderr, "reconfigure"):
@@ -41,7 +46,6 @@ def chat():
 
     while True:
         try:
-            print()
             user_input = session.prompt()
             if user_input is None:
                 continue
@@ -49,6 +53,8 @@ def chat():
 
             if not user_input:
                 continue
+
+            print()
 
             category, payload = triage_user_input(user_input)
 

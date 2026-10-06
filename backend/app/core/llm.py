@@ -1,6 +1,24 @@
+import logging
+import warnings
 from typing import Literal, Optional, Sequence, Dict, Tuple
 from langchain_core.language_models.chat_models import BaseChatModel
 from langchain_core.tools import BaseTool
+
+# Suppress AFC and Google GenAI library log notices
+logging.getLogger("google.genai").setLevel(logging.ERROR)
+logging.getLogger("google.genai.models").setLevel(logging.ERROR)
+logging.getLogger("google").setLevel(logging.ERROR)
+warnings.filterwarnings("ignore", message=".*Automatic Function Calling.*")
+warnings.filterwarnings("ignore", message=".*AFC.*")
+warnings.filterwarnings("ignore", category=UserWarning, module="langchain_google_genai")
+
+try:
+    from google.genai.models import Models, AsyncModels
+    Models._logged_afc_warning = True
+    AsyncModels._logged_afc_warning = True
+except Exception:
+    pass
+
 from app.core.config import settings
 
 # Global in-memory cache for LLM instances & tool-bound clients

@@ -84,3 +84,11 @@ A quick reference guide for the multi-agent system implemented in this workspace
 3. **Clean Output & Warning Suppression**:
    * Third-party library deprecation warnings (e.g., `duckduckgo_search` / `ddgs`) must be suppressed internally with `warnings.filterwarnings` so `stderr` never pollutes the user's terminal UI.
 
+4. **Action Badge Formatting & Shimmer-Only Searches**:
+   * `Search:` and `List:` tools must **only** display dynamic animated shimmers and must never print permanent badges.
+   * File actions (`Read:`, `Write:`, `Delete:`, `Bash:`) print permanent badges with `[bold yellow]` prefix and normalized full absolute path with forward slashes in non-bold `[white]`.
+
+5. **Natural Prose Explanations (No Forced Bullet Points)**:
+   * Summarizer outputs should be crafted in natural, cohesive paragraphs and narrative prose rather than converting every response into rigid bulleted lists.
+
+
