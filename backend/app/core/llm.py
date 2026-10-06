@@ -60,15 +60,18 @@ def get_cached_llm(
     return _LLM_CACHE[cache_key]
 
 
-def get_cached_coder_llm(tools: Sequence[BaseTool]) -> BaseChatModel:
+def get_cached_coder_llm(tools: Optional[Sequence[BaseTool]] = None) -> BaseChatModel:
     """
     Returns a cached singleton LLM with tools pre-bound, avoiding repeated tool binding.
     """
+    from app.integrations.tools import ALL_TOOLS
+    bound_tools = tools if tools is not None else ALL_TOOLS
+
     selected_provider = settings.DEFAULT_PROVIDER
     selected_model = settings.GEMINI_MODEL if selected_provider == "gemini" else settings.GROQ_MODEL
     cache_key = f"{selected_provider}:{selected_model}"
 
     if cache_key not in _CODER_LLM_CACHE:
         base = get_cached_llm(provider=selected_provider, model_name=selected_model)
-        _CODER_LLM_CACHE[cache_key] = base.bind_tools(tools)
+        _CODER_LLM_CACHE[cache_key] = base.bind_tools(bound_tools)
     return _CODER_LLM_CACHE[cache_key]

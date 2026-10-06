@@ -1,14 +1,14 @@
 """Centralized design system, styles, colors, and UI components for QueryNest CLI."""
+import sys
+if hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+if hasattr(sys.stderr, "reconfigure"):
+    sys.stderr.reconfigure(encoding="utf-8", errors="replace")
 
 from prompt_toolkit.styles import Style
 from rich.console import Console
 from rich.panel import Panel
 from rich.markdown import Markdown
-
-# ---------------------------------------------------------
-# Global Visual Separators & Dimensions
-# ---------------------------------------------------------
-DIVIDER = "──────────────────────────────────────────────────────────────────────────"
 
 # ---------------------------------------------------------
 # Semantic Color Palette (Rich & Terminal)
@@ -61,7 +61,7 @@ CLI_STYLE = Style.from_dict({
 # Welcome Banner Panel (Kept Boxed as requested)
 # ---------------------------------------------------------
 def create_banner_panel(workspace_root: str, active_provider: str, active_model: str) -> Panel:
-    """Creates the standard welcome banner panel."""
+    """Creates the standard welcome banner panel with responsive fitting."""
     banner_text = (
         "[dim]Autonomous coding, testing & self-healing state machine powered by LangGraph[/dim]\n\n"
         f"• [bold green]Workspace Root:[/] {workspace_root}\n\n"
@@ -74,6 +74,7 @@ def create_banner_panel(workspace_root: str, active_provider: str, active_model:
         border_style=COLORS["border"],
         title="[bold]QueryNest Assistant[/bold]",
         title_align="left",
+        expand=False,
     )
 
 
@@ -92,14 +93,4 @@ def print_summary_header(console: Console) -> None:
 
 def print_error_badge(console: Console, error_text: str) -> None:
     """Renders clean inline error badge without heavy boxed frames."""
-    console.print(f"\n[bold red]❌ Error:[/] [dim red]{error_text}[/dim red]\n")
-
-
-def print_top_divider(console: Console) -> None:
-    """Renders the top framing divider before user prompt."""
-    console.print(f"\n[dim]{DIVIDER}[/dim]")
-
-
-def print_bottom_divider(console: Console) -> None:
-    """Renders the bottom framing divider in console history after message submission."""
-    console.print(f"[dim]{DIVIDER}[/dim]\n")
+    console.print(f"\n[bold red]❌ Error:[/] {error_text}\n")

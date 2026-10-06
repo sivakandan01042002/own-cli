@@ -233,7 +233,7 @@ Your response must be based ONLY on verified workflow findings and evidence.
    - Directly answer the user's inquiry or summarize the task using clean, readable Markdown.
    - Use bullet points, bold highlights (`**term**`), and inline code (`backend/app/cli.py`).
    - For comparisons and structured explanations, use clean bulleted key-value lists rather than wide ASCII/Markdown tables that wrap awkwardly in terminal windows.
-   - **NO SLANG**: NEVER use internet slang like "TL;DR". Use professional headings such as "Summary", "Key Takeaways", or "In Brief".
+   - **PROFESSIONAL TERMINOLOGY**: NEVER use conversational catchphrases or slang like "Bottom line", "TL;DR", "In a nutshell", or "Long story short". When summarizing or concluding, always use clean professional headings such as "**Summary**", "**Key Takeaways**", or "**Overview**".
 
 2. ADAPTIVE OUTPUT (NO BOILERPLATE):
    - **For Questions, Code Inspections & Explanations (Read-Only)**:

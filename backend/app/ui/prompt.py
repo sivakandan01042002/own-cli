@@ -1,6 +1,6 @@
 from typing import Optional
 from prompt_toolkit.layout.containers import HSplit, Window, FloatContainer, Float
-from prompt_toolkit.layout.controls import FormattedTextControl, BufferControl
+from prompt_toolkit.layout.controls import BufferControl
 from prompt_toolkit.layout.menus import CompletionsMenu
 from prompt_toolkit.layout.layout import Layout
 from prompt_toolkit.buffer import Buffer
@@ -10,11 +10,14 @@ from prompt_toolkit.key_binding.defaults import load_key_bindings
 from prompt_toolkit.application import Application
 from prompt_toolkit.completion import Completer
 
-from app.core.theme import DIVIDER, CLI_STYLE
+from app.core.theme import CLI_STYLE
 
 
 class FramedPromptSession:
-    """Interactive prompt with dynamic line wrapping, history recall, and locked framing dividers."""
+    """
+    Interactive prompt with dynamic line wrapping, history recall,
+    and responsive Prompt Toolkit native window dividers.
+    """
     def __init__(self, completer: Optional[Completer] = None, style=None):
         self.completer = completer
         self.style = style or CLI_STYLE
@@ -57,8 +60,9 @@ class FramedPromptSession:
                 return [("class:prompt", "❯ ")]
             return [("class:prompt", "  ")]
 
+        # Use native Window(char="─") so Prompt Toolkit automatically fills the exact width
         root = HSplit([
-            Window(FormattedTextControl([("class:divider", DIVIDER)]), height=1, dont_extend_height=True),
+            Window(char="─", style="class:divider", height=1, dont_extend_height=True),
             FloatContainer(
                 content=Window(
                     BufferControl(buffer=buf),
@@ -74,7 +78,7 @@ class FramedPromptSession:
                     )
                 ],
             ),
-            Window(FormattedTextControl([("class:divider", DIVIDER)]), height=1, dont_extend_height=True),
+            Window(char="─", style="class:divider", height=1, dont_extend_height=True),
         ])
 
         app = Application(

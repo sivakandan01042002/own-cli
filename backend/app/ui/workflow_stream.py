@@ -173,6 +173,10 @@ def execute_workflow(task: str, test_path: Optional[str] = None):
                     loader.stop()
                     summary = state_update.get("final_summary", "")
                     final_summary_text = summary
+                    if summary:
+                        console.print()
+                        console.print(Markdown(summary))
+                        console.print()
 
         # Record completed session to Redis
         save_session_record({

@@ -7,9 +7,6 @@ if hasattr(sys.stderr, "reconfigure"):
 from typing import Dict, Any, Union, List
 from langchain_core.messages import SystemMessage, HumanMessage, AIMessage, BaseMessage
 from langgraph.prebuilt import ToolNode
-from rich.console import Console
-
-from app.ui.markdown_stream import stream_live_markdown
 
 from app.core.config import settings
 from app.core.llm import get_cached_llm, get_cached_coder_llm
@@ -22,8 +19,6 @@ from app.modules.coding_agent.prompts import (
     FIXER_SYSTEM_PROMPT,
     SUMMARIZER_SYSTEM_PROMPT,
 )
-
-console = Console()
 
 
 def extract_text(content: Union[str, List[Any], Any]) -> str:
@@ -43,23 +38,24 @@ def extract_text(content: Union[str, List[Any], Any]) -> str:
 
 def planner_node(state: CodingAgentState) -> Dict[str, Any]:
     """
-    Architect Node: Analyzes the user's task in context of the workspace root
-    and repository tree, producing a structured implementation blueprint.
+    Planner Node (Senior Software Architect):
+    Inspects repository tree context and designs a comprehensive implementation blueprint.
+    Never modifies files directly.
     """
     llm = get_cached_llm()
-    workspace_root = state.get("workspace_root") or str(settings.WORKSPACE_ROOT)
-    repo_tree = state.get("repository_tree") or "Not available."
     task = state.get("task", "")
+    repo_tree = state.get("repository_tree", "")
+    workspace_root = state.get("workspace_root", str(settings.WORKSPACE_ROOT))
 
-    prompt_content = (
+    planner_prompt = (
         f"Workspace Root: {workspace_root}\n\n"
         f"Repository Structure:\n{repo_tree}\n\n"
-        f"User Task:\n{task}"
+        f"User Task to Plan:\n{task}"
     )
 
     messages = [
         SystemMessage(content=PLANNER_SYSTEM_PROMPT),
-        HumanMessage(content=prompt_content),
+        HumanMessage(content=planner_prompt),
     ]
 
     response = llm.invoke(messages)
@@ -67,86 +63,100 @@ def planner_node(state: CodingAgentState) -> Dict[str, Any]:
 
     return {
         "plan": plan_text,
-        "messages": [response],
         "retry_count": 0,
         "test_passed": False,
-        "modified_files": [],
-        "coder_findings": [],
+        "test_results": None,
+        "fixer_analysis": None,
     }
 
 
 def coder_node(state: CodingAgentState) -> Dict[str, Any]:
     """
-    Coder Node: Inspects repository files, executes the blueprint, or performs code modifications.
-    Uses singleton cached tool-bound LLM instance.
+    Coder Node (Senior Software Engineer):
+    Directly inspects repository files with tools, implements code changes,
+    or formulates explanations based on real evidence.
     """
-    coder_llm = get_cached_coder_llm(ALL_TOOLS)
-    system_msg = SystemMessage(content=CODER_SYSTEM_PROMPT)
-
-    history: List[BaseMessage] = list(state.get("messages", []))
-    if not history:
-        workspace_root = state.get("workspace_root") or str(settings.WORKSPACE_ROOT)
-        repo_tree = state.get("repository_tree") or ""
-        task = state.get("task", "")
-        context_str = (
-            f"Workspace Root: {workspace_root}\n\n"
-            f"Repository Structure:\n{repo_tree}\n\n"
-            f"User Task:\n{task}"
-        )
-        history = [HumanMessage(content=context_str)]
-
-    messages = [system_msg] + history
-    response = coder_llm.invoke(messages)
-
-    # Track coder text findings for summarizer
-    response_text = extract_text(response.content)
+    llm = get_cached_coder_llm(ALL_TOOLS)
+    task = state.get("task", "")
+    plan = state.get("plan", "")
+    messages: List[BaseMessage] = list(state.get("messages", []))
     findings = list(state.get("coder_findings", []))
-    if response_text.strip() and not (hasattr(response, "tool_calls") and response.tool_calls):
-        findings.append(response_text.strip())
+    modified_files = list(state.get("modified_files", []))
+
+    # Prepend architectural blueprint context if coming from Planner
+    if plan and not any("Architect Blueprint:" in getattr(m, "content", "") for m in messages if isinstance(m, HumanMessage)):
+        plan_context = HumanMessage(
+            content=f"Architect Blueprint for Implementation:\n{plan}\n\nPlease inspect the relevant files and implement the requested changes or unit tests."
+        )
+        messages.append(plan_context)
+
+    # Format execution history for the LLM
+    formatted_messages = [SystemMessage(content=CODER_SYSTEM_PROMPT)] + messages
+
+    response = llm.invoke(formatted_messages)
+
+    # Track any newly modified files if tool calls are requested
+    if hasattr(response, "tool_calls") and response.tool_calls:
+        for tool_call in response.tool_calls:
+            name = tool_call.get("name", "")
+            args = tool_call.get("args", {})
+            if name in ("write_file", "delete_file"):
+                file_path = args.get("file_path")
+                if file_path and file_path not in modified_files:
+                    modified_files.append(file_path)
+
+    # Record text insights
+    content_str = extract_text(response.content).strip()
+    if content_str and not (hasattr(response, "tool_calls") and response.tool_calls):
+        findings.append(content_str)
 
     return {
         "messages": [response],
         "coder_findings": findings,
+        "modified_files": modified_files,
     }
 
 
-# Prebuilt LangGraph ToolNode that executes any tool calls on disk/web
+# LangGraph Prebuilt Tool Node
 tool_node = ToolNode(ALL_TOOLS)
 
 
 def validator_node(state: CodingAgentState) -> Dict[str, Any]:
     """
-    Validator Node: Reads test target from state and executes pytest in the workspace.
+    Validator Node (QA & Test Inspector):
+    Executes pytest in a background subprocess to verify implementation correctness.
     """
-    target_test = state.get("test_command") or ""
-    test_output = run_pytest.invoke({"test_path": target_test})
+    test_cmd = state.get("test_command", "")
+    task = state.get("task", "")
 
-    # Check if pytest exited with code 0 and has no failure keywords
-    passed = "Exit Code: 0" in test_output and "failed" not in test_output.lower()
-
-    # If exit code 5 (no tests collected) and no specific test target was given, pass cleanly
-    if not passed and "Exit Code: 5" in test_output and not target_test:
-        passed = True
+    # Execute pytest suite
+    test_output = run_pytest.invoke({"test_path": test_cmd})
+    passed = "✅ Tests passed" in test_output
 
     return {
-        "test_results": test_output,
         "test_passed": passed,
+        "test_results": test_output,
     }
 
 
 def fixer_node(state: CodingAgentState) -> Dict[str, Any]:
     """
-    Fixer / Debugger Node: Analyzes test failure tracebacks and provides root-cause diagnosis.
+    Fixer Node (Root-Cause Debugger):
+    Triggered upon test failure. Analyzes tracebacks, isolates true root causes,
+    and returns precise fix instructions back to the Coder.
     """
     llm = get_cached_llm()
+    task = state.get("task", "")
+    plan = state.get("plan", "")
+    test_results = state.get("test_results", "")
     current_retry = state.get("retry_count", 0) + 1
-    test_results = state.get("test_results", "No test output available.")
 
     prompt_content = (
-        f"The tests failed on attempt {current_retry}.\n\n"
-        f"Here is the pytest failure output and traceback:\n"
-        f"```text\n{test_results}\n```\n\n"
-        f"Please analyze the exact root cause and give the Coder precise fix instructions."
+        f"User Task: {task}\n\n"
+        f"Implementation Plan:\n{plan}\n\n"
+        f"Pytest Failure Output:\n{test_results}\n\n"
+        f"Attempt Number: {current_retry}\n\n"
+        f"Please analyze the failure traceback, identify the exact bug in the codebase, and provide precise fix instructions for the Coder."
     )
 
     messages = [
@@ -170,9 +180,9 @@ def fixer_node(state: CodingAgentState) -> Dict[str, Any]:
 
 def summarizer_node(state: CodingAgentState) -> Dict[str, Any]:
     """
-    Summarizer Node with Real-Time Token Streaming:
-    Streams completion report tokens directly to stdout while accumulating the full
-    response for state and Redis persistence.
+    Summarizer Node (Pure Backend Worker):
+    Compiles verified workflow results and queries the LLM for the final structured response.
+    Returns state without performing any terminal I/O.
     """
     llm = get_cached_llm()
     task = state.get("task", "")
@@ -225,15 +235,7 @@ def summarizer_node(state: CodingAgentState) -> Dict[str, Any]:
         HumanMessage(content=summary_prompt),
     ]
 
-    def token_generator():
-        try:
-            for chunk in llm.stream(messages):
-                token = extract_text(chunk.content)
-                if token:
-                    yield token
-        except Exception:
-            response = llm.invoke(messages)
-            yield extract_text(response.content)
+    response = llm.invoke(messages)
+    full_summary = extract_text(response.content)
 
-    full_summary = stream_live_markdown(token_generator(), console=console)
     return {"final_summary": full_summary}
