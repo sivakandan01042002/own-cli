@@ -1,4 +1,4 @@
-from typing import Optional
+from typing import Optional, List, Dict, Any
 from rich.console import Console
 from rich.markdown import Markdown
 from langchain_core.messages import HumanMessage
@@ -12,10 +12,6 @@ from app.core.theme import (
     print_error_badge,
 )
 from app.integrations.tools.file_tools import list_directory
-from app.modules.coding_agent import (
-    coding_agent_app,
-    record_task_in_history,
-)
 from app.ui.shimmer import ShimmerLoader
 
 console = Console()
@@ -27,11 +23,53 @@ def print_banner():
     console.print(create_banner_panel(settings.WORKSPACE_ROOT, settings.DEFAULT_PROVIDER, active_model))
 
 
+def _get_shimmer_message_for_tool(name: str, args: Dict[str, Any]) -> str:
+    """Generates clean in-progress text for the active tool without redundant path clutter."""
+    if name == "read_file":
+        return "Reading file..."
+    elif name == "write_file":
+        return "Writing file..."
+    elif name == "delete_file":
+        return "Deleting file..."
+    elif name == "list_directory":
+        return "Listing files..."
+    elif name == "search_web":
+        return "Searching web..."
+    elif name == "run_terminal_command":
+        return "Running command..."
+    return "Executing action..."
+
+
+def _print_completed_tool_badge(name: str, args: Dict[str, Any]):
+    """Prints the permanent flush-left action badge upon tool execution completion."""
+    if name == "read_file":
+        path = args.get("file_path", "")
+        console.print(f"[bold yellow]Read:[/] [bold white]{path}[/bold white]")
+    elif name == "write_file":
+        path = args.get("file_path", "")
+        console.print(f"[bold yellow]Write:[/] [bold white]{path}[/bold white]")
+    elif name == "delete_file":
+        path = args.get("file_path", "")
+        console.print(f"[bold yellow]Delete:[/] [bold white]{path}[/bold white]")
+    elif name == "list_directory":
+        path = args.get("dir_path", ".")
+        console.print(f"[bold yellow]List:[/] [bold white]{path}[/bold white]")
+    elif name == "search_web":
+        query = args.get("query", "")
+        console.print(f"[bold yellow]Search:[/] [bold white]{query}[/bold white]")
+    elif name == "run_terminal_command":
+        cmd = args.get("command", "")
+        console.print(f"[bold yellow]Bash:[/] [bold white]{cmd}[/bold white]")
+
+
 def execute_workflow(task: str, test_path: Optional[str] = None):
     """
-    Executes the multi-agent graph stream with animated cement/shimmer text,
-    renders live badges upon completion, and automatically persists sessions to Redis.
+    Executes the multi-agent graph stream with green animated shimmer text,
+    renders live badges upon completion of each tool, and automatically persists sessions to Redis.
     """
+    from app.modules.coding_agent.graph import coding_agent_app
+    from app.modules.coding_agent.commands import record_task_in_history
+
     try:
         repo_tree = list_directory.invoke({"dir_path": "."})
     except Exception:
@@ -65,9 +103,10 @@ def execute_workflow(task: str, test_path: Optional[str] = None):
     final_test_passed = True
     final_retries = 0
     final_summary_text = ""
+    pending_tool_calls: List[Dict[str, Any]] = []
 
     loader = ShimmerLoader(console=console)
-    loader.start("Thinking...")
+    loader.start("Analyzing task...")
 
     try:
         for event in coding_agent_app.stream(initial_state, stream_mode="updates"):
@@ -79,52 +118,36 @@ def execute_workflow(task: str, test_path: Optional[str] = None):
                     print_planner_header(console)
                     console.print(Markdown(plan_content))
                     console.print()
-                    loader.start("Thinking...")
+                    loader.start("Analyzing codebase...")
 
                 elif node_name == "coder":
                     messages = state_update.get("messages", [])
                     has_tool_calls = False
-                    next_shimmer = "Thinking..."
 
                     for msg in messages:
                         if hasattr(msg, "tool_calls") and msg.tool_calls:
                             has_tool_calls = True
-                            loader.stop()
-                            for tc in msg.tool_calls:
-                                name = tc.get("name", "")
-                                args = tc.get("args", {})
-                                if name == "read_file":
-                                    path = args.get("file_path", "")
-                                    console.print(f"[bold yellow]Read:[/] [bold white]{path}[/bold white]")
-                                    next_shimmer = f"Reading {path}..."
-                                elif name == "write_file":
-                                    path = args.get("file_path", "")
-                                    console.print(f"[bold yellow]Write:[/] [bold white]{path}[/bold white]")
-                                    next_shimmer = f"Writing {path}..."
-                                elif name == "delete_file":
-                                    path = args.get("file_path", "")
-                                    console.print(f"[bold yellow]Delete:[/] [bold white]{path}[/bold white]")
-                                    next_shimmer = f"Deleting {path}..."
-                                elif name == "list_directory":
-                                    path = args.get("dir_path", ".")
-                                    console.print(f"[bold yellow]List:[/] [bold white]{path}[/bold white]")
-                                    next_shimmer = f"Listing files in {path}..."
-                                elif name == "search_web":
-                                    query = args.get("query", "")
-                                    console.print(f"[bold yellow]Search:[/] [bold white]{query}[/bold white]")
-                                    next_shimmer = f"Searching web for {query}..."
-                                elif name == "run_terminal_command":
-                                    cmd = args.get("command", "")
-                                    console.print(f"[bold yellow]Bash:[/] [bold white]{cmd}[/bold white]")
-                                    next_shimmer = f"Running {cmd}..."
-                            loader.start(next_shimmer)
+                            pending_tool_calls = msg.tool_calls
+                            # Start shimmering with clean action text (e.g. "Reading file...")
+                            first_tc = pending_tool_calls[0]
+                            action_text = _get_shimmer_message_for_tool(
+                                first_tc.get("name", ""),
+                                first_tc.get("args", {}),
+                            )
+                            loader.start(action_text)
 
                     if not has_tool_calls:
                         # Stop loader cleanly before Summarizer node streams tokens to stdout
                         loader.stop()
 
                 elif node_name == "tools":
-                    loader.start("Thinking...")
+                    # Tool physically completed execution -> Print permanent badges
+                    loader.stop()
+                    for tc in pending_tool_calls:
+                        _print_completed_tool_badge(tc.get("name", ""), tc.get("args", {}))
+                    pending_tool_calls = []
+                    # Resume with contextual "Analyzing findings..." while Coder processes outputs
+                    loader.start("Analyzing findings...")
 
                 elif node_name == "validator":
                     passed = state_update.get("test_passed", False)
@@ -137,7 +160,7 @@ def execute_workflow(task: str, test_path: Optional[str] = None):
                         console.print("\n[bold red]❌ Pytest Verification Failed[/bold red]")
                         if test_results:
                             console.print(f"[dim red]{test_results[:300]}...[/dim red]\n")
-                        loader.start("🩹 Diagnosing bug & self-healing...")
+                        loader.start("Diagnosing bug & self-healing...")
 
                 elif node_name == "fixer":
                     retry = state_update.get("retry_count", 1)

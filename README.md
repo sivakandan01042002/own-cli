@@ -130,17 +130,19 @@ class CodingAgentState(TypedDict):
 QueryNest includes a framed terminal CLI built on **Prompt Toolkit** and **Rich**, modularized under `app/ui/`:
 
 * **Modular UI Architecture (`app/ui/`):**
-  * `shimmer.py`: `ShimmerLoader` & `ShimmerText` rendering a cement-grey text base with an animated glowing wave beam that sweeps from start to end repeatedly during operations (`Reading file...`, `Running command...`, `Thinking...`).
+  * `markdown_stream.py`: `stream_live_markdown` reusable UI component that streams LLM tokens in real time at 15fps while rendering fully styled Rich Markdown.
+  * `shimmer.py`: `ShimmerLoader` & `ShimmerText` rendering a cement-grey text base with an animated glowing green wave beam that sweeps from start to end repeatedly during operations (`Reading file...`, `Running command...`, `Analyzing codebase...`).
   * `prompt.py`: Framed input box with top/bottom dividers, dynamic line wrapping, and `InMemoryHistory` for **Up/Down arrow key command recall**.
   * `completer.py`: Interactive autocomplete popup menu for slash commands (`/help`, `/session`, `/model`, `/tools`, `/clear`, `/exit`).
   * `workflow_stream.py`: Real-time streaming coordinating live shimmer animations, flush-left tool badges, and automatic Redis session persistence.
-* **Animated Shimmer Wave & Flush-Left Action Badges:** Real-time animated cement wave during active execution, transitioning to bold yellow and white badges upon completion:
-  * `Reading file backend/app/cli.py...` ➔ `Read: backend/app/cli.py`
-  * `Writing file backend/app/core/config.py...` ➔ `Write: backend/app/core/config.py`
-  * `Deleting file temp.py...` ➔ `Delete: temp.py`
-  * `Listing files in backend/app...` ➔ `List: backend/app`
-  * `Searching web for langchain...` ➔ `Search: langchain`
-  * `Running command pytest tests/...` ➔ `Bash: pytest tests/ -v`
+* **Animated Shimmer Wave & Flush-Left Action Badges:** Real-time animated cement wave with neutral scrolling dot during active execution, transitioning to bold yellow and white badges upon completion:
+  * `⠋ Reading file...` ➔ `Read: backend/app/cli.py`
+  * `⠋ Writing file...` ➔ `Write: backend/app/core/config.py`
+  * `⠋ Deleting file...` ➔ `Delete: temp.py`
+  * `⠋ Listing files...` ➔ `List: backend/app`
+  * `⠋ Searching web...` ➔ `Search: langchain`
+  * `⠋ Running command...` ➔ `Bash: pytest tests/ -v`
+  * Dynamic context loaders: `⠋ Analyzing task...`, `⠋ Analyzing codebase...`, `⠋ Analyzing findings...`, `⠋ Diagnosing bug & self-healing...`
 * **Real-time Direct Token Streaming:** Responses stream word-by-word with clean borderless formatting.
 * **Cloud Session Persistence:** Automatically saves completed task executions into **Upstash Redis** (`querynest:sessions`).
 

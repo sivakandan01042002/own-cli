@@ -6,9 +6,11 @@ from rich.text import Text
 
 class ShimmerText:
     """
-    Renders a cement-colored base text with a glowing light/shimmer beam
-    that sweeps from left to right across the text repeatedly.
+    Renders a neutral scrolling dot spinner followed by cement-colored text
+    with an animated glowing green light/shimmer beam that sweeps across the text.
     """
+    SPINNER_FRAMES = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"]
+
     def __init__(
         self,
         message: str = "",
@@ -20,6 +22,7 @@ class ShimmerText:
         self.beam_width = beam_width
         self.pos = -beam_width
         self.msg_len = len(message)
+        self.frame_idx = 0
 
     def set_message(self, message: str):
         self.message = message
@@ -28,19 +31,28 @@ class ShimmerText:
 
     def __rich__(self) -> Text:
         text = Text()
-        # Cement base: #707070 (dim grey)
-        # Highlight ramp: #707070 -> #a8a8a8 -> #e0e0e0 -> bold #ffffff (peak) -> #e0e0e0 -> #a8a8a8 -> #707070
+
+        # 1. Neutral scrolling dot spinner (no color / dim as requested)
+        spinner_char = self.SPINNER_FRAMES[self.frame_idx % len(self.SPINNER_FRAMES)]
+        text.append(f"{spinner_char} ", style="dim")
+        self.frame_idx += 1
+
+        # 2. Cement base with Glowing Green Shimmer Wave
+        # Base: #707070 (cement grey)
+        # Gradient peak: bold #22c55e (vivid green)
+        # Inner glow: bold #86efac (light green)
+        # Outer glow: #4b7a63 (soft muted green transition)
         for i, char in enumerate(self.message):
             dist = abs(i - self.pos)
             if dist == 0:
-                text.append(char, style="bold #ffffff")
+                text.append(char, style="bold #22c55e")
             elif dist == 1:
-                text.append(char, style="bold #e0e0e0")
+                text.append(char, style="bold #86efac")
             elif dist == 2:
-                text.append(char, style="#a8a8a8")
+                text.append(char, style="#4b7a63")
             else:
                 text.append(char, style=self.base_color)
-        
+
         self.pos += 1
         if self.pos > self.msg_len + self.beam_width + 4:
             self.pos = -self.beam_width
@@ -49,7 +61,7 @@ class ShimmerText:
 
 class ShimmerLoader:
     """
-    Reusable context manager and controller for animated cement/shimmer loaders.
+    Reusable context manager and controller for animated green shimmer loaders.
     Automatically clears its display line upon completion (transient=True).
     """
     def __init__(self, console: Optional[Console] = None):

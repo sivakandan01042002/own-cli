@@ -9,6 +9,8 @@ from langchain_core.messages import SystemMessage, HumanMessage, AIMessage, Base
 from langgraph.prebuilt import ToolNode
 from rich.console import Console
 
+from app.ui.markdown_stream import stream_live_markdown
+
 from app.core.config import settings
 from app.core.llm import get_cached_llm, get_cached_coder_llm
 from app.integrations.tools import ALL_TOOLS
@@ -198,42 +200,40 @@ def summarizer_node(state: CodingAgentState) -> Dict[str, Any]:
     if not findings_summary and coder_findings:
         findings_summary = "\n\n".join(coder_findings)
 
-    summary_prompt = (
-        f"Original User Request:\n{task}\n\n"
-        f"Architecture Plan (if any):\n{plan or 'N/A - Direct inspection/execution'}\n\n"
-        f"Coder Analysis & Inspection Findings:\n{findings_summary or 'No specific output recorded.'}\n\n"
-        f"Verification Status: {'Passed ✅' if test_passed else 'Failed / Not Run'}\n"
-        f"Test Execution Output:\n{test_results or 'N/A'}\n\n"
-        f"Please write the final, factual, and concise summary report for the user."
-    )
+    modified_files = state.get("modified_files", [])
+    is_code_modified = bool(modified_files)
+
+    if not is_code_modified and not test_results:
+        summary_prompt = (
+            f"User Request:\n{task}\n\n"
+            f"Verified Codebase Inspection & Findings:\n{findings_summary or 'No specific output recorded.'}\n\n"
+            f"Instruction: Directly answer the user's inquiry with clear, structured Markdown (bullet points, bold highlights, code formatting, and component comparisons). Do NOT output empty boilerplate headers like '## Changes: None' or '## Validation: None'."
+        )
+    else:
+        summary_prompt = (
+            f"User Request:\n{task}\n\n"
+            f"Architecture Plan:\n{plan or 'N/A'}\n\n"
+            f"Implementation Findings:\n{findings_summary or 'Completed.'}\n\n"
+            f"Modified Files: {', '.join(modified_files) if modified_files else 'None'}\n"
+            f"Test Verification: {'Passed ✅' if test_passed else 'Failed ❌'}\n"
+            f"Test Execution Output:\n{test_results or 'N/A'}\n\n"
+            f"Instruction: Present a clear completion report with implemented features, changed files, and test results."
+        )
 
     messages = [
         SystemMessage(content=SUMMARIZER_SYSTEM_PROMPT),
         HumanMessage(content=summary_prompt),
     ]
 
-    sys.stdout.write("\n")
-    sys.stdout.flush()
+    def token_generator():
+        try:
+            for chunk in llm.stream(messages):
+                token = extract_text(chunk.content)
+                if token:
+                    yield token
+        except Exception:
+            response = llm.invoke(messages)
+            yield extract_text(response.content)
 
-    # Stream tokens in real time directly to the terminal
-    accumulated_chunks: List[str] = []
-    try:
-        for chunk in llm.stream(messages):
-            token = extract_text(chunk.content)
-            if token:
-                sys.stdout.write(token)
-                sys.stdout.flush()
-                accumulated_chunks.append(token)
-    except Exception:
-        # Fallback to invoke if provider stream fails
-        response = llm.invoke(messages)
-        token = extract_text(response.content)
-        sys.stdout.write(token)
-        sys.stdout.flush()
-        accumulated_chunks.append(token)
-
-    sys.stdout.write("\n\n")
-    sys.stdout.flush()
-
-    full_summary = "".join(accumulated_chunks)
+    full_summary = stream_live_markdown(token_generator(), console=console)
     return {"final_summary": full_summary}
