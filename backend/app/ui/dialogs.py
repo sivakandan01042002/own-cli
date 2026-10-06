@@ -1,5 +1,5 @@
-"""Interactive UI dialogs and permission prompt components using Rich."""
-from typing import Tuple
+"""Interactive UI dialogs and permission prompt components using Prompt Toolkit & Rich."""
+from typing import Tuple, List, Dict, Any
 from rich.console import Console
 from rich.prompt import Prompt
 
@@ -8,43 +8,68 @@ console = Console()
 
 def prompt_plan_permission() -> Tuple[str, str]:
     """
-    Renders an interactive permission and confirmation dialog after plan generation.
+    Renders an interactive 2-option permission dialog after plan generation using arrow-key navigation.
     
     Returns:
-        tuple: (action: 'proceed' | 'cancel' | 'adjust', feedback: str)
+        tuple: (action: 'proceed' | 'cancel', feedback: str)
     """
-    console.print("[bold cyan]Proceed with this implementation plan?[/bold cyan]")
-    console.print("  [bold green]1.[/bold green] [white]Yes, Do It[/white] [dim](Execute tools & code)[/dim]")
-    console.print("  [bold red]2.[/bold red] [white]No, Cancel[/white] [dim](Abort workflow)[/dim]")
-    console.print("  [bold yellow]3.[/bold yellow] [white]Tell me what to do / Adjust plan[/white] [dim](Provide custom instructions)[/dim]\n")
+    from app.ui.menu import show_interactive_menu
 
-    try:
-        choice = Prompt.ask(
-            "[bold white]Choice[/bold white]",
-            choices=["1", "2", "3", "yes", "no", "cancel", "adjust", "edit", "feedback"],
-            default="1",
-            show_choices=False,
-        ).strip().lower()
-    except (EOFError, KeyboardInterrupt):
-        return "cancel", ""
+    items = [
+        ("proceed", "1. Yes, Do It", "(Execute tools & code)"),
+        ("cancel", "2. No, Cancel", "(Abort workflow)"),
+    ]
 
-    if choice in ("2", "no", "cancel"):
+    choice = show_interactive_menu(
+        title="Proceed with this implementation plan?",
+        items=items,
+        instruction="Use ↑/↓ to navigate, Enter to select, Esc to cancel",
+    )
+
+    if not choice or choice == "cancel":
         return "cancel", ""
-    elif choice in ("3", "adjust", "edit", "feedback"):
-        try:
-            feedback = Prompt.ask("\n[bold yellow]Enter instructions / adjustments[/bold yellow]").strip()
-        except (EOFError, KeyboardInterrupt):
-            feedback = ""
-        return "adjust", feedback
 
     return "proceed", ""
+
+
+def prompt_tool_permission(tools: list) -> Tuple[str, str]:
+    """
+    Renders tool action badges and an interactive 2-option arrow-key permission picker before tool execution.
+    
+    Returns:
+        tuple: (action: 'proceed' | 'cancel', feedback: str)
+    """
+    from app.ui.renderers import render_action_badge
+    from app.ui.menu import show_interactive_menu
+
+    for tc in tools:
+        name = tc.get("name", "") if isinstance(tc, dict) else getattr(tc, "name", "")
+        args = tc.get("args", {}) if isinstance(tc, dict) else getattr(tc, "args", {})
+        render_action_badge(name, args)
+
+    items = [
+        ("proceed", "1. Yes, Do It", "(Execute tools)"),
+        ("cancel", "2. No, Cancel / Skip", "(Skip tools and stop)"),
+    ]
+
+    choice = show_interactive_menu(
+        title="Allow agent to execute these tools?",
+        items=items,
+        instruction="Use ↑/↓ to navigate, Enter to select, Esc to cancel",
+    )
+
+    if not choice or choice == "cancel":
+        return "cancel", ""
+
+    return "proceed", ""
+
 
 
 def prompt_confirmation(message: str, default: bool = True) -> bool:
     """Renders a simple yes/no confirmation dialog."""
     try:
         choice = Prompt.ask(
-            f"[bold cyan]{message}[/bold cyan]",
+            f"[white]{message}[/white]",
             choices=["y", "n", "yes", "no"],
             default="y" if default else "n",
         ).strip().lower()

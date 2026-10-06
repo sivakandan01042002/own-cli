@@ -54,7 +54,12 @@ CLI_STYLE = Style.from_dict({
     # Autocomplete scrollbar
     "scrollbar.background": "bg:#1e1e1e",
     "scrollbar.button": "bg:#555555",
+    
+    # Active bottom divider toolbar directly below prompt input
+    "bottom-toolbar": "bg:default",
+    "bottom-divider": f"fg:{COLORS['muted_fg']}",
 })
+
 
 
 # ---------------------------------------------------------

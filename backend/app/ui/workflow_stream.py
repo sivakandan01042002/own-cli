@@ -164,10 +164,10 @@ def execute_workflow(task: str, test_path: Optional[str] = None, interactive: bo
                             action, feedback = prompt_plan_permission()
 
                             if action == "cancel":
-                                console.print("\n[bold yellow]❌ Workflow cancelled by user.[/bold yellow]\n")
+                                console.print("\n[#a0a0a0]Workflow cancelled.[/#a0a0a0]\n")
                                 return
                             elif action == "adjust" and feedback:
-                                console.print("\n[bold cyan]🔄 Updating plan with your instructions...[/bold cyan]\n")
+                                console.print("\n[#a0a0a0]Updating plan with instructions...[/#a0a0a0]\n")
                                 return execute_workflow(
                                     f"{task}\n\nUser Adjustments/Instructions: {feedback}",
                                     test_path=test_path,
@@ -184,6 +184,23 @@ def execute_workflow(task: str, test_path: Optional[str] = None, interactive: bo
                             if hasattr(msg, "tool_calls") and msg.tool_calls:
                                 has_tool_calls = True
                                 pending_tool_calls = msg.tool_calls
+                                loader.stop()
+
+                                if interactive:
+                                    from app.ui.dialogs import prompt_tool_permission
+                                    action, feedback = prompt_tool_permission(pending_tool_calls)
+
+                                    if action == "cancel":
+                                        console.print("\n[#a0a0a0]Tool execution cancelled.[/#a0a0a0]\n")
+                                        return
+                                    elif action == "adjust" and feedback:
+                                        console.print("\n[#a0a0a0]Updating workflow with instructions...[/#a0a0a0]\n")
+                                        return execute_workflow(
+                                            f"{task}\n\nUser Adjustments/Instructions: {feedback}",
+                                            test_path=test_path,
+                                            interactive=interactive,
+                                        )
+
                                 # Start shimmering with clean action text (e.g. "Reading file...")
                                 first_tc = pending_tool_calls[0]
                                 action_text = _get_shimmer_message_for_tool(
@@ -196,15 +213,18 @@ def execute_workflow(task: str, test_path: Optional[str] = None, interactive: bo
                             # Stop loader cleanly before Summarizer node streams tokens to stdout
                             loader.stop()
 
+
                     elif node_name == "tools":
-                        # Tool physically completed execution -> Print permanent badges
+                        # Tool physically completed execution
                         loader.stop()
-                        from app.ui.renderers import render_action_badge
-                        for tc in pending_tool_calls:
-                            render_action_badge(tc.get("name", ""), tc.get("args", {}))
+                        if not interactive:
+                            from app.ui.renderers import render_action_badge
+                            for tc in pending_tool_calls:
+                                render_action_badge(tc.get("name", ""), tc.get("args", {}))
                         pending_tool_calls = []
                         # Resume with contextual "Analyzing findings..." while Coder processes outputs
                         loader.start("Analyzing findings...")
+
 
                     elif node_name == "validator":
                         passed = state_update.get("test_passed", False)
@@ -212,19 +232,20 @@ def execute_workflow(task: str, test_path: Optional[str] = None, interactive: bo
                         final_test_passed = passed
                         loader.stop()
                         if passed:
-                            console.print("\n[bold green]✅ Pytest Verification Passed (Exit Code 0)[/bold green]\n")
+                            console.print("\n[white]Pytest Verification Passed (Exit Code 0)[/white]\n")
                         else:
-                            console.print("\n[bold red]❌ Pytest Verification Failed[/bold red]")
+                            console.print("\n[#a0a0a0]Pytest Verification Failed[/#a0a0a0]")
                             if test_results:
-                                console.print(f"[dim red]{test_results[:300]}...[/dim red]\n")
+                                console.print(f"[dim]{test_results[:300]}...[/dim]\n")
                             loader.start("Diagnosing bug & self-healing...")
 
                     elif node_name == "fixer":
                         retry = state_update.get("retry_count", 1)
                         final_retries = retry
                         loader.stop()
-                        console.print(f"[bold magenta]🔄 Self-Healing Attempt {retry} in progress...[/bold magenta]")
+                        console.print(f"\n[#a0a0a0]Self-Healing Attempt {retry} in progress...[/#a0a0a0]\n")
                         loader.start("Applying fixes...")
+
 
                     elif node_name == "summarizer":
                         loader.stop()

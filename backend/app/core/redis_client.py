@@ -94,10 +94,14 @@ def save_session_record(record: Dict[str, Any]) -> bool:
     Appends a completed task session record into Redis list 'querynest:sessions'.
     Falls back to in-memory list if Redis is offline.
     """
-    if "created_at" not in record:
-        record["created_at"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    if "created_at" not in record or not record["created_at"]:
+        record["created_at"] = now_str
+    if "timestamp" not in record or not record["timestamp"]:
+        record["timestamp"] = now_str
 
     client = get_redis_client()
+
     if client is not None:
         try:
             client.lpush("querynest:sessions", json.dumps(record))

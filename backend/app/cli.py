@@ -44,17 +44,23 @@ def chat():
         style=CLI_STYLE,
     )
 
+    prefill_text = ""
     while True:
         try:
-            user_input = session.prompt()
+            user_input = session.prompt(default=prefill_text)
+            prefill_text = ""
             if user_input is None:
                 continue
             user_input = user_input.strip()
+            if not user_input:
+                continue
 
             category, payload = triage_user_input(user_input)
 
             if category == "command":
-                dispatch_command(payload)
+                selected = dispatch_command(payload)
+                if selected:
+                    prefill_text = selected
             elif category == "greeting":
                 console.print(f"{payload}")
             elif category == "unsafe":
@@ -64,6 +70,7 @@ def chat():
 
         except (KeyboardInterrupt, EOFError):
             break
+
 
 
 @app.command()
