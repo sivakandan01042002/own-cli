@@ -14,6 +14,9 @@ from app.integrations.tools.terminal_tools import (
 from app.integrations.tools.web_tools import (
     search_web,
 )
+from app.integrations.tools.image_tools import (
+    inspect_image,
+)
 
 ALL_TOOLS = [
     list_directory,
@@ -24,6 +27,7 @@ ALL_TOOLS = [
     run_terminal_command,
     run_pytest,
     search_web,
+    inspect_image,
 ]
 
 __all__ = [
@@ -35,6 +39,7 @@ __all__ = [
     "run_terminal_command",
     "run_pytest",
     "search_web",
+    "inspect_image",
     "ALL_TOOLS",
 ]
 

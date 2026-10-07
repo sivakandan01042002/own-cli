@@ -79,6 +79,14 @@ def _extract_bash_payload(args: Dict[str, Any]) -> str:
     return next(iter(args.values())) if len(args) == 1 else str(args)
 
 
+def _extract_image_payload(args: Dict[str, Any]) -> str:
+    """Extracts and formats image file paths, rendering #Image for clipboard screenshots."""
+    raw_path = args.get("image_path") or args.get("file_path") or ""
+    if ".querynest_cache" in raw_path and "clipboard" in raw_path:
+        return "#Image"
+    return _format_full_path(raw_path)
+
+
 # Smart Tool Category Registry
 TOOL_BADGE_REGISTRY: Dict[str, Tuple[str, Any]] = {
     "read_file": ("Read", _extract_path_payload),
@@ -88,6 +96,7 @@ TOOL_BADGE_REGISTRY: Dict[str, Tuple[str, Any]] = {
     "run_terminal_command": ("Bash", _extract_bash_payload),
     "search_web": ("Bash", _extract_bash_payload),
     "list_directory": ("Bash", _extract_bash_payload),
+    "inspect_image": ("Vision", _extract_image_payload),
 }
 
 

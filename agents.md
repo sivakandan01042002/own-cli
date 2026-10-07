@@ -14,13 +14,13 @@ A quick reference guide for the multi-agent system implemented in this workspace
 
 ### 2. 💻 Coder Agent (`coder_node`)
 * **Role:** Senior Full-Stack Developer & Automation Engineer
-* **Mission:** Inspects existing project files, implements requested features, executes safe Git commands, generates documents/resumes, runs terminal commands (npm, pip, docker, curl, powershell), writes unit tests, or explains project code based on verified evidence.
-* **Tools Used:** `write_file`, `read_file`, `list_directory`, `search_web`, `run_git_command`, `run_terminal_command`, `run_pytest`, `delete_file`
-* **Output:** `state["messages"]` (with tool calls for file inspection/creation/git/terminal), `state["coder_findings"]`
+* **Mission:** Inspects existing project files, implements requested features, executes safe Git commands, generates documents/resumes, runs terminal commands (npm, pip, docker, curl, powershell), inspects visual images/mockups with Multimodal Vision, writes unit tests, or explains project code based on verified evidence.
+* **Tools Used:** `write_file`, `read_file`, `list_directory`, `search_web`, `run_git_command`, `run_terminal_command`, `run_pytest`, `delete_file`, `inspect_image`
+* **Output:** `state["messages"]` (with tool calls for file inspection/creation/git/terminal/vision), `state["coder_findings"]`
 
 ### 3. ⚙️ Tool Execution Node (`tool_node`)
 * **Role:** Python Execution Engine (Prebuilt LangGraph `ToolNode`)
-* **Mission:** Physically executes tool calls on disk or over HTTP and feeds outputs back into conversation memory.
+* **Mission:** Physically executes tool calls on disk, over HTTP, or through Multimodal Vision APIs and feeds outputs back into conversation memory.
 
 ### 4. 🧪 Validator Agent (`validator_node`)
 * **Role:** QA & Test Inspector
@@ -42,13 +42,13 @@ A quick reference guide for the multi-agent system implemented in this workspace
 ## 🔀 Decision Edges
 
 1. **`route_initial_intent` (At `START`)**:
-   * **Question / Code Explanation** (*"what is the purpose of cli.py?"*) $\rightarrow$ `coder` (Direct project inspection, skips Planner & Pytest).
+   * **Question / Code Explanation / Image Query** (*"what is the purpose of cli.py?"* or *"describe @image screenshot.png"*) $\rightarrow$ `coder` (Direct project inspection, skips Planner & Pytest).
    * **Coding / Build Task** (*"build a REST API"*) $\rightarrow$ `planner` (Architecture blueprint).
 
 2. **`should_continue_coder` (After `coder`)**:
    * Has tool calls $\rightarrow$ `tools` $\rightarrow$ `coder` (Loop).
    * Code was modified (`write_file` or `delete_file` called) $\rightarrow$ `validator` (Runs Pytest).
-   * No code modified (read-only/Git/Q&A) $\rightarrow$ `summarizer` (Direct answer, skips Pytest).
+   * No code modified (read-only/Git/Vision/Q&A) $\rightarrow$ `summarizer` (Direct answer, skips Pytest).
 
 3. **`should_retry_or_finish` (After `validator`)**:
    * Tests Passed $\rightarrow$ `summarizer` $\rightarrow$ `END`.
@@ -69,25 +69,26 @@ A quick reference guide for the multi-agent system implemented in this workspace
 | `run_terminal_command` | `command: str, timeout: int = 60` | Shell commands (npm, pip, docker, curl, powershell, bash) |
 | `run_pytest` | `test_path: str = ""` | Run pytest suite and capture output |
 | `search_web` | `query: str, max_results: int = 5` | DuckDuckGo search for live docs (Cached in Redis) |
+| `inspect_image` | `image_path: str, prompt: str = "..."` | Multimodal Vision inspection of UI mockups, diagrams, and error screenshots (Zero-Cost / Cached in Redis) |
 
 ---
 
 ## 🛡️ Reliability & Guardrail Rules
 
 1. **Strict Tool Name Enforcement & Sanitization**:
-   * The Coder agent is strictly restricted to the 8 tools listed above.
+   * The Coder agent is strictly restricted to the 9 tools listed above.
    * `coder_node` automatically sanitizes `tool_calls` by filtering out any hallucinated tool names before handing off to `ToolNode`, preventing runtime validation crashes.
 
-2. **Web Search Loop Protection**:
-   * Limit `search_web` to a maximum of 2 queries per task.
-   * If search yields no results or if answering standard software engineering / architectural concepts (e.g., JEV Architecture, design patterns), synthesize the answer directly from core knowledge rather than looping.
+2. **Zero-Cost Multimodal & Web Search Caching**:
+   * `inspect_image` and `search_web` automatically cache results by SHA-256 / MD5 hash in Redis, ensuring 0 repeat API calls and 0 token waste.
+   * Large images are automatically downscaled via `Pillow` before processing.
 
 3. **Clean Output & Warning Suppression**:
    * Third-party library deprecation warnings must be suppressed internally with `warnings.filterwarnings` so `stderr` never pollutes the user's terminal UI.
 
 4. **Action Badge Formatting & Shimmer-Only Searches**:
    * `Search:` and `List:` tools must **only** display dynamic animated shimmers and must never print permanent badges.
-   * Action badges (`Read:`, `Write:`, `Delete:`, `Git:`, `Bash:`) print permanent badges with `[bold yellow]` prefix and normalized path/command in non-bold `[white]`.
+   * Action badges (`Read:`, `Write:`, `Delete:`, `Git:`, `Bash:`, `Vision:`) print permanent badges with `[bold yellow]` prefix and normalized path/command in non-bold `[white]`.
 
 5. **Natural Prose Explanations (No Forced Bullet Points)**:
    * Summarizer outputs should be crafted in natural, cohesive paragraphs and narrative prose rather than converting every response into rigid bulleted lists.

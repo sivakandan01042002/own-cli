@@ -27,6 +27,11 @@ def route_initial_intent(state: CodingAgentState) -> str:
 
     is_inspection = any(task.startswith(kw) or f" {kw}" in task for kw in inspection_keywords)
     is_build = any(act in task for act in build_actions)
+    has_image = any(tag in task for tag in ("#image", "@image", "/vision"))
+
+    # Image queries without explicit build actions go directly to Coder for visual analysis
+    if has_image and not is_build:
+        return "coder"
 
     # Pure inquiries/inspections go directly to Coder (Inspector)
     if is_inspection and not is_build:

@@ -85,6 +85,36 @@ class FramedPromptSession:
         def _(event):
             event.app.exit(exception=KeyboardInterrupt)
 
+        # Alt + V (or Esc + V) to paste screenshot/image directly from clipboard
+        @kb.add("escape", "v")
+        def _(event):
+            try:
+                import time
+                from pathlib import Path
+                from PIL import ImageGrab, Image
+                from app.core.config import settings
+                from app.core.guardrails import register_clipboard_image
+
+                clipboard_data = ImageGrab.grabclipboard()
+
+                if isinstance(clipboard_data, Image.Image):
+                    cache_dir = settings.WORKSPACE_ROOT / ".querynest_cache" / "clipboard"
+                    cache_dir.mkdir(parents=True, exist_ok=True)
+                    timestamp = int(time.time() * 1000)
+                    img_path = cache_dir / f"clip_{timestamp}.png"
+                    clipboard_data.save(img_path, format="PNG")
+                    tag = register_clipboard_image(str(img_path))
+                    event.app.current_buffer.insert_text(f"{tag} ")
+                elif isinstance(clipboard_data, list):
+                    # Windows Explorer copied files
+                    for item in clipboard_data:
+                        p = Path(item)
+                        if p.suffix.lower() in {".png", ".jpg", ".jpeg", ".webp", ".gif", ".bmp"}:
+                            tag = register_clipboard_image(str(p))
+                            event.app.current_buffer.insert_text(f"{tag} ")
+            except Exception:
+                pass
+
         all_kb = merge_key_bindings([load_key_bindings(), kb])
 
         buf = Buffer(

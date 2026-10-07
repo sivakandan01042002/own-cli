@@ -60,28 +60,9 @@ def _get_shimmer_message_for_tool(name: str, args: Dict[str, Any]) -> str:
         return "Running git command..."
     elif name == "run_terminal_command":
         return "Running command..."
+    elif name == "inspect_image":
+        return "Inspecting image..."
     return "Executing action..."
-
-
-def _print_completed_tool_badge(name: str, args: Dict[str, Any]):
-    """Prints the permanent flush-left action badge upon tool execution completion."""
-    if name == "read_file":
-        path = _format_full_path(args.get("file_path", ""))
-        console.print(f"[bold yellow]Read:[/] [white]{path}[/white]")
-    elif name == "write_file":
-        path = _format_full_path(args.get("file_path", ""))
-        console.print(f"[bold yellow]Write:[/] [white]{path}[/white]")
-    elif name == "delete_file":
-        path = _format_full_path(args.get("file_path", ""))
-        console.print(f"[bold yellow]Delete:[/] [white]{path}[/white]")
-    elif name == "run_git_command":
-        subcmd = args.get("subcommand", "").strip()
-        if subcmd.lower().startswith("git "):
-            subcmd = subcmd[4:]
-        console.print(f"[bold yellow]Git:[/] [white]git {subcmd}[/white]")
-    elif name == "run_terminal_command":
-        cmd = args.get("command", "")
-        console.print(f"[bold yellow]Bash:[/] [white]{cmd}[/white]")
 
 
 def execute_workflow(task: str, test_path: Optional[str] = None, interactive: bool = True):
@@ -92,19 +73,54 @@ def execute_workflow(task: str, test_path: Optional[str] = None, interactive: bo
     """
     from app.modules.coding_agent.graph import coding_agent_app
     from app.modules.coding_agent.commands import record_task_in_history
+    from app.core.guardrails import extract_prompt_images
+    from app.integrations.tools.image_tools import _resolve_safe_image_path, _optimize_and_encode_image
 
     try:
         repo_tree = list_directory.invoke({"dir_path": "."})
     except Exception:
         repo_tree = "Unable to retrieve repository file listing."
 
-    initial_human_msg = HumanMessage(
-        content=(
+    clean_task, image_paths = extract_prompt_images(task)
+    attached_images_payload = []
+    
+    if image_paths:
+        for img_p in image_paths:
+            resolved_p = _resolve_safe_image_path(img_p)
+            if resolved_p.exists():
+                try:
+                    mime_type, b64_data, meta = _optimize_and_encode_image(resolved_p)
+                    attached_images_payload.append({
+                        "type": "image_url",
+                        "image_url": f"data:{mime_type};base64,{b64_data}",
+                        "filename": resolved_p.name,
+                        "meta": meta,
+                    })
+                except Exception:
+                    pass
+
+    if attached_images_payload:
+        image_summaries = ", ".join([f"{img['filename']} ({img['meta']['original_dimensions']})" for img in attached_images_payload])
+        text_content = (
             f"Workspace Root: {settings.WORKSPACE_ROOT}\n\n"
-            f"Repository Structure:\n{repo_tree}\n\n"
-            f"User Task:\n{task}"
+            f"User Task:\n{clean_task}\n\n"
+            f"[Attached Image(s): {image_summaries}]"
         )
-    )
+        msg_parts = [{"type": "text", "text": text_content}]
+        for img in attached_images_payload:
+            msg_parts.append({
+                "type": "image_url",
+                "image_url": img["image_url"],
+            })
+        initial_human_msg = HumanMessage(content=msg_parts)
+    else:
+        initial_human_msg = HumanMessage(
+            content=(
+                f"Workspace Root: {settings.WORKSPACE_ROOT}\n\n"
+                f"Repository Structure:\n{repo_tree}\n\n"
+                f"User Task:\n{task}"
+            )
+        )
 
     initial_state = {
         "task": task,
@@ -128,141 +144,113 @@ def execute_workflow(task: str, test_path: Optional[str] = None, interactive: bo
     final_summary_text = ""
     pending_tool_calls: List[Dict[str, Any]] = []
 
-    summarizer_live: Optional[Live] = None
-    accumulated_summary = ""
-
     loader = ShimmerLoader(console=console)
     loader.start("Analyzing task...")
 
     try:
-        for mode, payload in coding_agent_app.stream(initial_state, stream_mode=["updates", "messages"]):
-            if mode == "messages":
-                msg, metadata = payload
-                node = metadata.get("langgraph_node")
-                if node == "summarizer":
-                    if summarizer_live is None:
-                        loader.stop()
-                        console.print()
-                        summarizer_live = Live(Markdown(""), console=console, refresh_per_second=15, transient=False)
-                        summarizer_live.start()
-                    token = extract_text(getattr(msg, "content", ""))
-                    if token:
-                        accumulated_summary += token
-                        summarizer_live.update(Markdown(accumulated_summary))
+        for payload in coding_agent_app.stream(initial_state, stream_mode="updates"):
+            if not isinstance(payload, dict):
+                continue
 
-            elif mode == "updates":
-                for node_name, state_update in payload.items():
+            for node_name, state_update in payload.items():
 
-                    if node_name == "planner":
-                        loader.stop()
-                        plan_content = state_update.get("plan", "Plan generated.")
-                        print_planner_header(console)
-                        console.print(Markdown(plan_content))
-                        console.print()
+                if node_name == "planner":
+                    loader.stop()
+                    plan_content = state_update.get("plan", "Plan generated.")
+                    print_planner_header(console)
+                    console.print(Markdown(plan_content))
+                    console.print()
 
-                        # Modular human-in-the-loop permission & confirmation gate
-                        if interactive:
-                            from app.ui.dialogs import prompt_plan_permission
-                            action, feedback = prompt_plan_permission()
+                    # Modular human-in-the-loop permission & confirmation gate
+                    if interactive:
+                        from app.ui.dialogs import prompt_plan_permission
+                        action, feedback = prompt_plan_permission()
 
-                            if action == "cancel":
-                                console.print("[#a0a0a0]Workflow cancelled.[/#a0a0a0]")
-                                return
-                            elif action == "adjust" and feedback:
-                                console.print("[#a0a0a0]Updating plan with instructions...[/#a0a0a0]")
-                                return execute_workflow(
-                                    f"{task}\n\nUser Adjustments/Instructions: {feedback}",
-                                    test_path=test_path,
-                                    interactive=interactive,
-                                )
+                        if action == "cancel":
+                            console.print("[#a0a0a0]Workflow cancelled.[/#a0a0a0]")
+                            return
+                        elif action == "adjust" and feedback:
+                            console.print("[#a0a0a0]Updating plan with instructions...[/#a0a0a0]")
+                            return execute_workflow(
+                                f"{task}\n\nUser Adjustments/Instructions: {feedback}",
+                                test_path=test_path,
+                                interactive=interactive,
+                            )
 
-                        loader.start("Analyzing codebase...")
+                    loader.start("Analyzing codebase...")
 
-                    elif node_name == "coder":
-                        messages = state_update.get("messages", [])
-                        has_tool_calls = False
+                elif node_name == "coder":
+                    messages = state_update.get("messages", [])
+                    has_tool_calls = False
 
-                        for msg in messages:
-                            if hasattr(msg, "tool_calls") and msg.tool_calls:
-                                has_tool_calls = True
-                                pending_tool_calls = msg.tool_calls
-                                loader.stop()
-
-                                if interactive:
-                                    from app.ui.dialogs import prompt_tool_permission
-                                    action, feedback = prompt_tool_permission(pending_tool_calls)
-
-                                    if action == "cancel":
-                                        console.print("[#a0a0a0]Tool execution cancelled.[/#a0a0a0]")
-                                        return
-                                    elif action == "adjust" and feedback:
-                                        console.print("[#a0a0a0]Updating workflow with instructions...[/#a0a0a0]")
-                                        return execute_workflow(
-                                            f"{task}\n\nUser Adjustments/Instructions: {feedback}",
-                                            test_path=test_path,
-                                            interactive=interactive,
-                                        )
-
-                                # Start shimmering with clean action text (e.g. "Reading file...")
-                                first_tc = pending_tool_calls[0]
-                                action_text = _get_shimmer_message_for_tool(
-                                    first_tc.get("name", ""),
-                                    first_tc.get("args", {}),
-                                )
-                                loader.start(action_text)
-
-                        if not has_tool_calls:
-                            # Stop loader cleanly before Summarizer node streams tokens to stdout
+                    for msg in messages:
+                        if hasattr(msg, "tool_calls") and msg.tool_calls:
+                            has_tool_calls = True
+                            pending_tool_calls = msg.tool_calls
                             loader.stop()
 
+                            if interactive:
+                                from app.ui.dialogs import prompt_tool_permission
+                                action, feedback = prompt_tool_permission(pending_tool_calls)
 
-                    elif node_name == "tools":
-                        # Tool physically completed execution
+                                if action == "cancel":
+                                    console.print("[#a0a0a0]Tool execution cancelled.[/#a0a0a0]")
+                                    return
+                                elif action == "adjust" and feedback:
+                                    console.print("[#a0a0a0]Updating workflow with instructions...[/#a0a0a0]")
+                                    return execute_workflow(
+                                        f"{task}\n\nUser Adjustments/Instructions: {feedback}",
+                                        test_path=test_path,
+                                        interactive=interactive,
+                                    )
+
+                            # Start shimmering with clean action text (e.g. "Reading file...")
+                            first_tc = pending_tool_calls[0]
+                            action_text = _get_shimmer_message_for_tool(
+                                first_tc.get("name", ""),
+                                first_tc.get("args", {}),
+                            )
+                            loader.start(action_text)
+
+                    if not has_tool_calls:
                         loader.stop()
-                        if not interactive:
-                            from app.ui.renderers import render_action_badge
-                            for tc in pending_tool_calls:
-                                render_action_badge(tc.get("name", ""), tc.get("args", {}))
-                        pending_tool_calls = []
-                        # Resume with contextual "Analyzing findings..." while Coder processes outputs
-                        loader.start("Analyzing findings...")
 
+                elif node_name == "tools":
+                    loader.stop()
+                    if not interactive:
+                        from app.ui.renderers import render_action_badge
+                        for tc in pending_tool_calls:
+                            render_action_badge(tc.get("name", ""), tc.get("args", {}))
+                    pending_tool_calls = []
+                    loader.start("Analyzing findings...")
 
-                    elif node_name == "validator":
-                        passed = state_update.get("test_passed", False)
-                        test_results = state_update.get("test_results", "")
-                        final_test_passed = passed
-                        loader.stop()
-                        if passed:
-                            console.print("\n[white]Pytest Verification Passed (Exit Code 0)[/white]\n")
-                        else:
-                            console.print("\n[#a0a0a0]Pytest Verification Failed[/#a0a0a0]")
-                            if test_results:
-                                console.print(f"[dim]{test_results[:300]}...[/dim]\n")
-                            loader.start("Diagnosing bug & self-healing...")
+                elif node_name == "validator":
+                    passed = state_update.get("test_passed", False)
+                    test_results = state_update.get("test_results", "")
+                    final_test_passed = passed
+                    loader.stop()
+                    if passed:
+                        console.print("\n[white]Pytest Verification Passed (Exit Code 0)[/white]\n")
+                    else:
+                        console.print("\n[#a0a0a0]Pytest Verification Failed[/#a0a0a0]")
+                        if test_results:
+                            console.print(f"[dim]{test_results[:300]}...[/dim]\n")
+                        loader.start("Diagnosing bug & self-healing...")
 
-                    elif node_name == "fixer":
-                        retry = state_update.get("retry_count", 1)
-                        final_retries = retry
-                        loader.stop()
-                        console.print(f"\n[#a0a0a0]Self-Healing Attempt {retry} in progress...[/#a0a0a0]\n")
-                        loader.start("Applying fixes...")
+                elif node_name == "fixer":
+                    retry = state_update.get("retry_count", 1)
+                    final_retries = retry
+                    loader.stop()
+                    console.print(f"\n[#a0a0a0]Self-Healing Attempt {retry} in progress...[/#a0a0a0]\n")
+                    loader.start("Applying fixes...")
 
-
-
-                    elif node_name == "summarizer":
-                        loader.stop()
-                        summary = state_update.get("final_summary", "")
-                        final_summary_text = summary or accumulated_summary
-                        if summarizer_live is not None:
-                            summarizer_live.update(Markdown(final_summary_text))
-                            summarizer_live.stop()
-                            summarizer_live = None
-                            console.print()
-                        elif final_summary_text:
-                            console.print()
-                            console.print(Markdown(final_summary_text))
-                            console.print()
+                elif node_name == "summarizer":
+                    loader.stop()
+                    final_summary_text = state_update.get("final_summary", "")
+                    if final_summary_text:
+                        console.print()
+                        console.print(Markdown(final_summary_text))
+                        console.print()
 
         # Record completed session to Redis
         save_session_record({
@@ -275,13 +263,7 @@ def execute_workflow(task: str, test_path: Optional[str] = None, interactive: bo
 
     except Exception as e:
         loader.stop()
-        if summarizer_live is not None:
-            summarizer_live.stop()
-            summarizer_live = None
         err_msg = format_error_for_user(e)
         print_error_badge(console, err_msg)
     finally:
         loader.stop()
-        if summarizer_live is not None:
-            summarizer_live.stop()
-            summarizer_live = None
