@@ -63,17 +63,18 @@ Markdown.elements["table_open"] = BoxedTableElement
 def stream_live_markdown(
     token_stream: Iterable[str],
     console: Optional[Console] = None,
-    refresh_per_second: int = 15,
+    refresh_per_second: int = 20,
 ) -> str:
     """
     Reusable UI Component:
     Streams text tokens in real time while rendering formatted Rich Markdown with full rounded tables.
     Accumulates and returns the full generated text for state and session storage.
     """
-    console = console or Console(theme=RICH_THEME)
+    from app.ui.shimmer import ShimmerLoader
+    ShimmerLoader.stop_active()
 
+    console = console or Console(theme=RICH_THEME)
     accumulated_text = ""
-    console.print()
 
     with Live(
         Markdown(accumulated_text),
@@ -86,5 +87,4 @@ def stream_live_markdown(
                 accumulated_text += token
                 live.update(Markdown(accumulated_text))
 
-    console.print()
     return accumulated_text

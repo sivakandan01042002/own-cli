@@ -16,8 +16,9 @@ task_history: List[str] = []
 SLASH_COMMANDS = [
     "/help",
     "/model",
-    "/model gemini",
-    "/model groq",
+    "/mode",
+    "/mode normal",
+    "/mode accept-edits",
     "/session",
     "/sessions",
     "/tools",
@@ -73,9 +74,9 @@ def handle_help(args: str = "") -> Optional[str]:
     from app.ui.menu import show_interactive_menu
     commands_info = [
         ("/help", "/help", "Display this command reference guide"),
-        ("/model gemini", "/model gemini", "Switch active LLM provider to Gemini"),
-        ("/model groq", "/model groq", "Switch active LLM provider to Groq"),
-        ("/sessions", "/sessions", "List recent coding sessions stored in Redis"),
+        ("/model", "/model", "Interactively select and switch active AI model"),
+        ("/mode", "/mode", "Toggle execution mode (Normal Safe vs Auto Accept-All)"),
+        ("/sessions", "/sessions", "List & restore past coding sessions from Redis"),
         ("/session clear", "/session clear", "Reset session history in Redis"),
         ("/tools", "/tools", "Inspect all registered agent tools and signatures"),
         ("/history", "/history", "View tasks submitted in the current live terminal session"),
@@ -89,28 +90,81 @@ def handle_help(args: str = "") -> Optional[str]:
 
 
 def handle_model(args: str = "") -> Optional[str]:
-    """Switches the active LLM provider live on the fly."""
+    """Switches the active LLM model interactively and persists choice to config.json."""
+    from app.ui.menu import show_interactive_menu
+    from app.core.user_config import AVAILABLE_MODELS, save_config, get_config
+
     target = args.strip().lower()
+
+    # Direct argument mode: e.g. /model gemini or /model groq
     if target in ("gemini", "groq"):
-        settings.DEFAULT_PROVIDER = target
-        model_name = settings.GEMINI_MODEL if target == "gemini" else settings.GROQ_MODEL
-        console.print(f"\n[bold green]✔ Active provider switched to:[/] [bold yellow]{target.upper()}[/bold yellow] ({model_name})\n")
+        found = next((m for m in AVAILABLE_MODELS if m["provider"] == target), None)
+        if found:
+            save_config({
+                "provider": found["provider"],
+                "model": found["name"],
+                "model_display": found["display"],
+            })
+            console.print(f"\n[bold green]✔ Model switched to:[/] [bold yellow]{found['display']}[/bold yellow] ({found['desc']})\n")
+            return None
+
+    # Interactive menu mode
+    current_cfg = get_config()
+    current_model = current_cfg.get("model", "")
+
+    menu_items = []
+    for m in AVAILABLE_MODELS:
+        is_active = " (Active)" if m["name"] == current_model else ""
+        menu_items.append((
+            m["id"],
+            f"{m['display']}{is_active}",
+            m["desc"],
+        ))
+
+    choice = show_interactive_menu(
+        title="Select Active AI Model",
+        items=menu_items,
+        instruction="Use ↑/↓ to navigate, Enter to select, Esc to cancel",
+    )
+
+    if choice:
+        selected_model = next((m for m in AVAILABLE_MODELS if m["id"] == choice), None)
+        if selected_model:
+            save_config({
+                "provider": selected_model["provider"],
+                "model": selected_model["name"],
+                "model_display": selected_model["display"],
+            })
+            console.print(f"\n[bold green]✔ Active Model updated to:[/] [bold yellow]{selected_model['display']}[/bold yellow]\n")
+
+    return None
+
+
+def handle_mode(args: str = "") -> Optional[str]:
+    """Toggles or sets the execution mode (normal or accept-edits)."""
+    from app.core.user_config import get_active_mode, set_active_mode
+
+    arg_clean = args.strip().lower()
+    if arg_clean in ("accept-edits", "accept_edits", "auto", "accept-all", "all"):
+        new_mode = set_active_mode("accept-edits")
+    elif arg_clean in ("normal", "safe"):
+        new_mode = set_active_mode("normal")
     else:
-        current_model = settings.GEMINI_MODEL if settings.DEFAULT_PROVIDER == "gemini" else settings.GROQ_MODEL
-        console.print(
-            f"\n[bold yellow]Current Provider:[/] [bold cyan]{settings.DEFAULT_PROVIDER.upper()}[/bold cyan] ({current_model})\n"
-            f"[dim]Usage: /model gemini  OR  /model groq[/dim]\n"
-        )
+        current = get_active_mode()
+        new_mode = set_active_mode("accept-edits" if current == "normal" else "normal")
+
+    badge = "[bold green]accept-edits[/]" if new_mode == "accept-edits" else "[#a0a0a0]normal[/]"
+    console.print(f"[dim]Mode switched to:[/] {badge}")
     return None
 
 
 def handle_sessions(args: str = "") -> Optional[str]:
-    """Displays past coding sessions stored in Redis with interactive selection."""
+    """Displays past coding sessions stored in Redis. Selecting any session restores it into the active prompt."""
     from app.ui.menu import show_interactive_menu
     arg_clean = args.strip().lower()
     if arg_clean == "clear":
         clear_session_records()
-        console.print("\n[bold yellow]✔ Session records cleared from Redis.[/bold yellow]\n")
+        console.print("\n[bold yellow]Session records cleared from Redis.[/bold yellow]\n")
         return None
 
     limit = 6
@@ -131,11 +185,11 @@ def handle_sessions(args: str = "") -> Optional[str]:
         rel_time = format_relative_time(ts)
         menu_items.append((task_str, task_str, rel_time))
 
-
-    return show_interactive_menu(
+    selected = show_interactive_menu(
         items=menu_items,
-        instruction="Use ↑/↓ to navigate, Enter to load into prompt, Esc to cancel",
+        instruction="Use ↑/↓ to navigate, Enter to restore, Esc to cancel",
     )
+    return selected
 
 
 
@@ -165,6 +219,7 @@ def handle_history(args: str = "") -> Optional[str]:
 COMMAND_DISPATCHER = {
     "/help": handle_help,
     "/model": handle_model,
+    "/mode": handle_mode,
     "/session": handle_sessions,
     "/sessions": handle_sessions,
     "/tools": handle_tools,

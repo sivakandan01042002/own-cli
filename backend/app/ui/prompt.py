@@ -7,12 +7,18 @@ from prompt_toolkit.application import Application
 from prompt_toolkit.buffer import Buffer
 from prompt_toolkit.completion import Completer
 from prompt_toolkit.data_structures import Size
-from prompt_toolkit.filters import has_completions
+from prompt_toolkit.filters import Condition, has_completions
 from prompt_toolkit.history import InMemoryHistory
 from prompt_toolkit.key_binding import KeyBindings, merge_key_bindings
 from prompt_toolkit.key_binding.defaults import load_key_bindings
-from prompt_toolkit.layout.containers import Float, FloatContainer, HSplit, Window
-from prompt_toolkit.layout.controls import BufferControl
+from prompt_toolkit.layout.containers import (
+    ConditionalContainer,
+    Float,
+    FloatContainer,
+    HSplit,
+    Window,
+)
+from prompt_toolkit.layout.controls import BufferControl, FormattedTextControl
 from prompt_toolkit.layout.layout import Layout
 from prompt_toolkit.layout.menus import CompletionsMenu
 from prompt_toolkit.output import create_output
@@ -20,6 +26,11 @@ from prompt_toolkit.output.vt100 import Vt100_Output
 from rich.console import Console
 
 from app.core.theme import CLI_STYLE
+from app.core.user_config import (
+    get_active_mode,
+    set_active_mode,
+    get_active_model_display,
+)
 
 console = Console()
 
@@ -41,7 +52,7 @@ def _get_safe_output():
 class FramedPromptSession:
     """
     Interactive prompt with dynamic line wrapping, history recall,
-    and responsive Prompt Toolkit native window dividers framing the input.
+    status bar bottom frame (mode ... model), and responsive Prompt Toolkit dividers.
     """
     def __init__(self, completer: Optional[Completer] = None, style=None):
         self.completer = completer
@@ -49,8 +60,9 @@ class FramedPromptSession:
         self.history = InMemoryHistory()
 
     def prompt(self, default: str = "") -> str:
-        """Prompts user for input with tight top and bottom dividers and optional default pre-fill."""
+        """Prompts user for input with dynamic status header and optional default pre-fill."""
         kb = KeyBindings()
+        is_active = [True]
 
         @kb.add("enter")
         def _(event):
@@ -62,6 +74,8 @@ class FramedPromptSession:
             if not text.strip():
                 return
             self.history.append_string(text.strip())
+            is_active[0] = False
+            event.app.invalidate()
             event.app.exit(result=text)
 
         @kb.add("up", filter=has_completions)
@@ -80,9 +94,20 @@ class FramedPromptSession:
         def _(event):
             event.app.current_buffer.history_forward()
 
+        # Shift + Tab or Ctrl + T to toggle Normal <-> Accept-Edits execution modes
+        @kb.add("s-tab")
+        @kb.add("c-t")
+        def _(event):
+            curr_mode = get_active_mode()
+            new_mode = "accept-edits" if curr_mode == "normal" else "normal"
+            set_active_mode(new_mode)
+            event.app.invalidate()
+
         @kb.add("c-c")
         @kb.add("c-d")
         def _(event):
+            is_active[0] = False
+            event.app.invalidate()
             event.app.exit(exception=KeyboardInterrupt)
 
         # Alt + V (or Esc + V) to paste screenshot/image directly from clipboard
@@ -133,7 +158,28 @@ class FramedPromptSession:
                 return [("class:prompt", "❯ ")]
             return [("class:prompt", "  ")]
 
-        # Use native Window(char="─") top and bottom dividers directly framing the input line
+        def _get_bottom_status_bar():
+            if not is_active[0]:
+                return []
+            cols = shutil.get_terminal_size((80, 24)).columns
+            mode = get_active_mode()
+            model_disp = get_active_model_display()
+
+            left_str = f" {mode}"
+            right_str = f"{model_disp} "
+
+            occupied = len(left_str) + len(right_str)
+            spacing_count = max(1, cols - occupied)
+
+            mode_style = "class:status-mode-accept-edits" if mode == "accept-edits" else "class:status-mode-normal"
+
+            return [
+                (mode_style, left_str),
+                ("class:divider", " " * spacing_count),
+                ("class:status-model", right_str),
+            ]
+
+        # Top divider + input container + bottom divider + status bar underneath (hidden when submitted)
         root = HSplit([
             Window(char="─", style="class:divider", height=1, dont_extend_height=True),
             FloatContainer(
@@ -152,6 +198,14 @@ class FramedPromptSession:
                 ],
             ),
             Window(char="─", style="class:divider", height=1, dont_extend_height=True),
+            ConditionalContainer(
+                content=Window(
+                    content=FormattedTextControl(_get_bottom_status_bar),
+                    height=1,
+                    dont_extend_height=True,
+                ),
+                filter=Condition(lambda: is_active[0]),
+            ),
         ])
 
         app = Application(

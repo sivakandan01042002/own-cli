@@ -34,11 +34,12 @@ def get_llm(
     """
     Factory function to initialize a new LangChain chat model.
     """
-    selected_provider = provider or settings.DEFAULT_PROVIDER
+    from app.core.user_config import get_active_provider, get_active_model_name
+    selected_provider = provider or get_active_provider()
 
     if selected_provider == "groq":
         from langchain_groq import ChatGroq
-        model = model_name or settings.GROQ_MODEL
+        model = model_name or get_active_model_name() or settings.GROQ_MODEL
         return ChatGroq(
             model=model,
             api_key=settings.GROQ_API_KEY,
@@ -46,7 +47,7 @@ def get_llm(
         )
     elif selected_provider == "gemini":
         from langchain_google_genai import ChatGoogleGenerativeAI
-        model = model_name or settings.GEMINI_MODEL
+        model = model_name or get_active_model_name() or settings.GEMINI_MODEL
         return ChatGoogleGenerativeAI(
             model=model,
             google_api_key=settings.GEMINI_API_KEY,
@@ -65,8 +66,9 @@ def get_cached_llm(
     Returns a cached singleton LLM instance to avoid repeated object initialization.
     Dynamically switches when provider or model changes.
     """
-    selected_provider = provider or settings.DEFAULT_PROVIDER
-    selected_model = model_name or (settings.GEMINI_MODEL if selected_provider == "gemini" else settings.GROQ_MODEL)
+    from app.core.user_config import get_active_provider, get_active_model_name
+    selected_provider = provider or get_active_provider()
+    selected_model = model_name or get_active_model_name()
     cache_key = (selected_provider, selected_model, temperature)
 
     if cache_key not in _LLM_CACHE:
@@ -83,10 +85,11 @@ def get_cached_coder_llm(tools: Optional[Sequence[BaseTool]] = None) -> BaseChat
     Returns a cached singleton LLM with tools pre-bound, avoiding repeated tool binding.
     """
     from app.integrations.tools import ALL_TOOLS
+    from app.core.user_config import get_active_provider, get_active_model_name
     bound_tools = tools if tools is not None else ALL_TOOLS
 
-    selected_provider = settings.DEFAULT_PROVIDER
-    selected_model = settings.GEMINI_MODEL if selected_provider == "gemini" else settings.GROQ_MODEL
+    selected_provider = get_active_provider()
+    selected_model = get_active_model_name()
     cache_key = f"{selected_provider}:{selected_model}"
 
     if cache_key not in _CODER_LLM_CACHE:

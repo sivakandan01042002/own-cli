@@ -8,16 +8,17 @@ console = Console()
 
 def prompt_plan_permission() -> Tuple[str, str]:
     """
-    Renders an interactive 2-option permission dialog after plan generation using arrow-key navigation.
+    Renders an interactive 3-option permission dialog after plan generation using arrow-key navigation.
     
     Returns:
-        tuple: (action: 'proceed' | 'cancel', feedback: str)
+        tuple: (action: 'proceed' | 'all' | 'cancel', feedback: str)
     """
     from app.ui.menu import show_interactive_menu
 
     items = [
         ("proceed", "1. Yes, Do It", "(Execute tools & code)"),
-        ("cancel", "2. No, Cancel", "(Abort workflow)"),
+        ("all", "2. Yes, Do for All Upcoming in this Session", "(Auto-accept all remaining steps)"),
+        ("cancel", "3. No, Cancel", "(Abort workflow)"),
     ]
 
     choice = show_interactive_menu(
@@ -29,15 +30,15 @@ def prompt_plan_permission() -> Tuple[str, str]:
     if not choice or choice == "cancel":
         return "cancel", ""
 
-    return "proceed", ""
+    return choice, ""
 
 
 def prompt_tool_permission(tools: list) -> Tuple[str, str]:
     """
-    Renders tool action badges and an interactive 2-option arrow-key permission picker before tool execution.
+    Renders tool action badges and an interactive 3-option arrow-key permission picker before tool execution.
     
     Returns:
-        tuple: (action: 'proceed' | 'cancel', feedback: str)
+        tuple: (action: 'proceed' | 'all' | 'cancel', feedback: str)
     """
     from app.ui.renderers import render_action_badge
     from app.ui.menu import show_interactive_menu
@@ -49,7 +50,8 @@ def prompt_tool_permission(tools: list) -> Tuple[str, str]:
 
     items = [
         ("proceed", "1. Yes, Do It", "(Execute tools)"),
-        ("cancel", "2. No, Cancel / Skip", "(Skip tools and stop)"),
+        ("all", "2. Yes, Do for All Upcoming in this Session", "(Auto-accept all remaining steps)"),
+        ("cancel", "3. No, Cancel", "(Skip tools and stop)"),
     ]
 
     choice = show_interactive_menu(
@@ -61,7 +63,7 @@ def prompt_tool_permission(tools: list) -> Tuple[str, str]:
     if not choice or choice == "cancel":
         return "cancel", ""
 
-    return "proceed", ""
+    return choice, ""
 
 
 

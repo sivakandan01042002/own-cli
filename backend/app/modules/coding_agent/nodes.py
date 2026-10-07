@@ -240,7 +240,19 @@ def summarizer_node(state: CodingAgentState) -> Dict[str, Any]:
         HumanMessage(content=summary_prompt),
     ]
 
-    response = llm.invoke(messages)
-    full_summary = extract_text(response.content)
+    try:
+        from app.ui.markdown_stream import stream_live_markdown
+
+        def _token_generator():
+            for chunk in llm.stream(messages):
+                token = extract_text(chunk.content)
+                if token:
+                    yield token
+
+        full_summary = stream_live_markdown(_token_generator())
+    except Exception:
+        response = llm.invoke(messages)
+        full_summary = extract_text(response.content)
+
     return {"final_summary": full_summary}
 

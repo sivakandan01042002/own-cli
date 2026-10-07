@@ -1,7 +1,12 @@
+import difflib
 import os
 from pathlib import Path
 from langchain_core.tools import tool
+from rich.console import Console
+from rich.syntax import Syntax
 from app.core.config import settings
+
+diff_console = Console()
 
 # Folders to ignore so we don't waste LLM tokens scanning them
 IGNORE_DIRS = {
@@ -120,6 +125,29 @@ def write_file(file_path: str, content: str) -> str:
     """
     try:
         target_file = _resolve_safe_path(file_path)
+        is_update = target_file.exists() and target_file.is_file()
+
+        if is_update:
+            try:
+                old_content = target_file.read_text(encoding="utf-8", errors="replace")
+                old_lines = old_content.splitlines(keepends=True)
+                new_lines = content.splitlines(keepends=True)
+
+                diff = list(difflib.unified_diff(
+                    old_lines,
+                    new_lines,
+                    fromfile=f"a/{file_path}",
+                    tofile=f"b/{file_path}",
+                    lineterm="",
+                ))
+                if diff:
+                    diff_text = "\n".join(line.rstrip("\r\n") for line in diff)
+                    diff_syntax = Syntax(diff_text, "diff", theme="ansi_dark", line_numbers=False)
+                    diff_console.print()
+                    diff_console.print(diff_syntax)
+                    diff_console.print()
+            except Exception:
+                pass
 
         # Create parent directories if they don't exist
         target_file.parent.mkdir(parents=True, exist_ok=True)
@@ -128,7 +156,8 @@ def write_file(file_path: str, content: str) -> str:
             f.write(content)
 
         line_count = len(content.splitlines())
-        return f"Successfully wrote {line_count} lines to '{file_path}'."
+        action_verb = "updated" if is_update else "wrote"
+        return f"Successfully {action_verb} {line_count} lines in '{file_path}'."
 
     except Exception as e:
         return f"Error writing to file '{file_path}': {str(e)}"

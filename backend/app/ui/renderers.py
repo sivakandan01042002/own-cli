@@ -81,28 +81,35 @@ def _extract_bash_payload(args: Dict[str, Any]) -> str:
 
 def _extract_image_payload(args: Dict[str, Any]) -> str:
     """Extracts and formats image file paths, rendering #Image for clipboard screenshots."""
-    raw_path = args.get("image_path") or args.get("file_path") or ""
+    raw_path = str(args.get("image_path") or args.get("file_path") or "").replace("\\", "/")
     if ".querynest_cache" in raw_path and "clipboard" in raw_path:
         return "#Image"
     return _format_full_path(raw_path)
 
 
-# Smart Tool Category Registry
+# Tools that only display dynamic shimmers and never print permanent badges
+SHIMMER_ONLY_TOOLS = {"list_directory", "search_web"}
+
+# Smart Tool Category Registry for permanent action badges
 TOOL_BADGE_REGISTRY: Dict[str, Tuple[str, Any]] = {
     "read_file": ("Read", _extract_path_payload),
     "write_file": ("Write", _extract_path_payload),
     "delete_file": ("Delete", _extract_path_payload),
     "run_git_command": ("Git", _extract_git_payload),
     "run_terminal_command": ("Bash", _extract_bash_payload),
-    "search_web": ("Bash", _extract_bash_payload),
-    "list_directory": ("Bash", _extract_bash_payload),
     "inspect_image": ("Vision", _extract_image_payload),
 }
 
 
 def render_action_badge(tool_name: str, args: Dict[str, Any]):
     """Renders permanent action badges dynamically via smart registry lookup."""
-    prefix, extractor = TOOL_BADGE_REGISTRY.get(tool_name, ("Bash", _extract_bash_payload))
+    if tool_name in SHIMMER_ONLY_TOOLS or tool_name not in TOOL_BADGE_REGISTRY:
+        return
+
+    prefix, extractor = TOOL_BADGE_REGISTRY[tool_name]
     payload = extractor(args) if extractor else str(args)
+    if not payload or payload == "{}":
+        return
+
     console.print(f"[bold yellow]{prefix}:[/] [white]{payload}[/white]")
 

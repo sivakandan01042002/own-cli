@@ -71,6 +71,11 @@ CLI_STYLE = Style.from_dict({
     # Active bottom divider toolbar directly below prompt input
     "bottom-toolbar": "bg:default",
     "bottom-divider": f"fg:{COLORS['muted_fg']}",
+
+    # Bottom status bar elements
+    "status-mode-normal": "fg:#a0a0a0",
+    "status-mode-accept-edits": "fg:#50fa7b bold",
+    "status-model": "fg:#a0a0a0",
 })
 
 

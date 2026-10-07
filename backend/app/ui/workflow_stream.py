@@ -75,6 +75,9 @@ def execute_workflow(task: str, test_path: Optional[str] = None, interactive: bo
     from app.modules.coding_agent.commands import record_task_in_history
     from app.core.guardrails import extract_prompt_images
     from app.integrations.tools.image_tools import _resolve_safe_image_path, _optimize_and_encode_image
+    from app.core.user_config import get_active_mode
+
+    session_auto_accept = (get_active_mode() in ("accept-edits", "auto"))
 
     try:
         repo_tree = list_directory.invoke({"dir_path": "."})
@@ -162,20 +165,15 @@ def execute_workflow(task: str, test_path: Optional[str] = None, interactive: bo
                     console.print()
 
                     # Modular human-in-the-loop permission & confirmation gate
-                    if interactive:
+                    if interactive and not session_auto_accept:
                         from app.ui.dialogs import prompt_plan_permission
                         action, feedback = prompt_plan_permission()
 
                         if action == "cancel":
                             console.print("[#a0a0a0]Workflow cancelled.[/#a0a0a0]")
                             return
-                        elif action == "adjust" and feedback:
-                            console.print("[#a0a0a0]Updating plan with instructions...[/#a0a0a0]")
-                            return execute_workflow(
-                                f"{task}\n\nUser Adjustments/Instructions: {feedback}",
-                                test_path=test_path,
-                                interactive=interactive,
-                            )
+                        elif action == "all":
+                            session_auto_accept = True
 
                     loader.start("Analyzing codebase...")
 
@@ -189,20 +187,15 @@ def execute_workflow(task: str, test_path: Optional[str] = None, interactive: bo
                             pending_tool_calls = msg.tool_calls
                             loader.stop()
 
-                            if interactive:
+                            if interactive and not session_auto_accept:
                                 from app.ui.dialogs import prompt_tool_permission
                                 action, feedback = prompt_tool_permission(pending_tool_calls)
 
                                 if action == "cancel":
                                     console.print("[#a0a0a0]Tool execution cancelled.[/#a0a0a0]")
                                     return
-                                elif action == "adjust" and feedback:
-                                    console.print("[#a0a0a0]Updating workflow with instructions...[/#a0a0a0]")
-                                    return execute_workflow(
-                                        f"{task}\n\nUser Adjustments/Instructions: {feedback}",
-                                        test_path=test_path,
-                                        interactive=interactive,
-                                    )
+                                elif action == "all":
+                                    session_auto_accept = True
 
                             # Start shimmering with clean action text (e.g. "Reading file...")
                             first_tc = pending_tool_calls[0]
@@ -213,11 +206,11 @@ def execute_workflow(task: str, test_path: Optional[str] = None, interactive: bo
                             loader.start(action_text)
 
                     if not has_tool_calls:
-                        loader.stop()
+                        loader.start("Analyzing findings...")
 
                 elif node_name == "tools":
                     loader.stop()
-                    if not interactive:
+                    if not interactive or session_auto_accept:
                         from app.ui.renderers import render_action_badge
                         for tc in pending_tool_calls:
                             render_action_badge(tc.get("name", ""), tc.get("args", {}))
@@ -230,27 +223,23 @@ def execute_workflow(task: str, test_path: Optional[str] = None, interactive: bo
                     final_test_passed = passed
                     loader.stop()
                     if passed:
-                        console.print("\n[white]Pytest Verification Passed (Exit Code 0)[/white]\n")
+                        console.print("[white]Pytest Verification Passed (Exit Code 0)[/white]")
                     else:
-                        console.print("\n[#a0a0a0]Pytest Verification Failed[/#a0a0a0]")
+                        console.print("[#a0a0a0]Pytest Verification Failed[/#a0a0a0]")
                         if test_results:
-                            console.print(f"[dim]{test_results[:300]}...[/dim]\n")
+                            console.print(f"[dim]{test_results[:300]}...[/dim]")
                         loader.start("Diagnosing bug & self-healing...")
 
                 elif node_name == "fixer":
                     retry = state_update.get("retry_count", 1)
                     final_retries = retry
                     loader.stop()
-                    console.print(f"\n[#a0a0a0]Self-Healing Attempt {retry} in progress...[/#a0a0a0]\n")
+                    console.print(f"[#a0a0a0]Self-Healing Attempt {retry} in progress...[/#a0a0a0]")
                     loader.start("Applying fixes...")
 
                 elif node_name == "summarizer":
                     loader.stop()
                     final_summary_text = state_update.get("final_summary", "")
-                    if final_summary_text:
-                        console.print()
-                        console.print(Markdown(final_summary_text))
-                        console.print()
 
         # Record completed session to Redis
         save_session_record({

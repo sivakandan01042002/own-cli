@@ -64,14 +64,23 @@ class ShimmerLoader:
     Reusable context manager and controller for animated green shimmer loaders.
     Automatically clears its display line upon completion (transient=True).
     """
+    _ACTIVE_LOADER: Optional["ShimmerLoader"] = None
+
     def __init__(self, console: Optional[Console] = None):
         self.console = console or Console()
         self._shimmer = ShimmerText("")
         self._live: Optional[Live] = None
 
+    @classmethod
+    def stop_active(cls):
+        """Stops any currently running global shimmer loader."""
+        if cls._ACTIVE_LOADER is not None:
+            cls._ACTIVE_LOADER.stop()
+
     def start(self, message: str):
         """Starts the animated shimmering text loader with the given message."""
         self.stop()
+        ShimmerLoader._ACTIVE_LOADER = self
         self._shimmer.set_message(message)
         self._live = Live(
             self._shimmer,
@@ -90,6 +99,8 @@ class ShimmerLoader:
 
     def stop(self):
         """Stops the loader and cleanly clears the active line."""
+        if ShimmerLoader._ACTIVE_LOADER is self:
+            ShimmerLoader._ACTIVE_LOADER = None
         if self._live is not None:
             try:
                 self._live.stop()
