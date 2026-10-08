@@ -182,6 +182,16 @@ def execute_workflow(
     loader = ShimmerLoader(console=console)
     loader.start("Analyzing task...")
 
+    from app.core.storage import WorkspaceLock
+    from app.integrations.tools.terminal_tools import cancel_active_subprocess
+
+    # Concurrency Guard: Acquire atomic workspace lock
+    lock_sid = session_id or "default_session"
+    ws_lock = WorkspaceLock(settings.WORKSPACE_ROOT)
+    if not ws_lock.acquire(lock_sid):
+        console.print("[bold yellow]Notice:[/] Another QueryNest session is currently operating on this workspace. Execution queued/prevented.")
+        return final_messages
+
     try:
         for payload in coding_agent_app.stream(initial_state, stream_mode="updates"):
             if not isinstance(payload, dict):
@@ -203,7 +213,7 @@ def execute_workflow(
 
                         if action == "cancel":
                             console.print("[#a0a0a0]Workflow cancelled.[/#a0a0a0]")
-                            return
+                            return final_messages
                         elif action == "all":
                             session_auto_accept = True
 
@@ -225,7 +235,7 @@ def execute_workflow(
 
                                 if action == "cancel":
                                     console.print("[#a0a0a0]Tool execution cancelled.[/#a0a0a0]")
-                                    return
+                                    return final_messages
                                 elif action == "all":
                                     session_auto_accept = True
 
@@ -298,10 +308,27 @@ def execute_workflow(
 
         return final_messages
 
+    except KeyboardInterrupt:
+        loader.stop()
+        cancel_active_subprocess()
+        console.print("\n[yellow]Execution cancelled by user. Session checkpointed.[/yellow]")
+        if session_id:
+            try:
+                save_session_thread(
+                    session_id=session_id,
+                    title=clean_task[:60] if clean_task else "Cancelled Session",
+                    messages=final_messages,
+                )
+            except Exception:
+                pass
+        return final_messages
     except Exception as e:
         loader.stop()
+        cancel_active_subprocess()
         err_msg = format_error_for_user(e)
         print_error_badge(console, err_msg)
         return final_messages
     finally:
         loader.stop()
+        ws_lock.release(lock_sid)
+

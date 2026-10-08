@@ -1,3 +1,5 @@
+from typing import TypedDict, Optional, Any, Dict
+
 from app.integrations.tools.file_tools import (
     list_directory,
     read_file,
@@ -21,6 +23,20 @@ from app.integrations.tools.image_tools import (
     inspect_image,
     generate_image,
 )
+from app.integrations.tools.browser_tools import (
+    browser_open,
+    browser_screenshot,
+    browser_click,
+    browser_type,
+)
+
+class ToolResult(TypedDict, total=False):
+    success: bool
+    output: str
+    error: Optional[str]
+    metadata: Optional[Dict[str, Any]]
+
+
 
 ALL_TOOLS = [
     list_directory,
@@ -36,6 +52,10 @@ ALL_TOOLS = [
     read_doc_url,
     inspect_image,
     generate_image,
+    browser_open,
+    browser_screenshot,
+    browser_click,
+    browser_type,
 ]
 
 __all__ = [
@@ -52,6 +72,10 @@ __all__ = [
     "read_doc_url",
     "inspect_image",
     "generate_image",
+    "browser_open",
+    "browser_screenshot",
+    "browser_click",
+    "browser_type",
     "ALL_TOOLS",
 ]
 

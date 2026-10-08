@@ -5,34 +5,9 @@ from typing import List, Tuple, Optional
 from prompt_toolkit.completion import Completer, Completion
 
 from app.core.config import settings
+from app.constants.workspace import DEFAULT_IGNORE_DIRS
+from app.constants.commands import SLASH_COMMANDS_META
 
-IGNORE_DIRS = {
-    ".git",
-    "__pycache__",
-    ".pytest_cache",
-    ".venv",
-    "venv",
-    "node_modules",
-    ".vscode",
-    ".idea",
-    ".querynest_cache",
-}
-
-SLASH_COMMANDS_META: List[Tuple[str, str]] = [
-    ("/help", "Display command reference guide"),
-    ("/model", "Interactively select and switch active AI model"),
-    ("/mode", "Toggle mode (normal safe vs accept-edits)"),
-    ("/mode normal", "Set mode to normal (safe permission gate)"),
-    ("/mode accept-edits", "Set mode to accept-edits (auto execution)"),
-    ("/new", "Start a fresh multi-turn conversation thread"),
-    ("/sessions", "List & restore past session threads from Redis"),
-    ("/session clear", "Reset all session threads and history"),
-    ("/tools", "Inspect all registered agent tools and signatures"),
-    ("/history", "View tasks submitted in the current live session"),
-    ("/clear", "Clear terminal screen"),
-    ("/exit", "Close QueryNest session"),
-    ("/quit", "Close QueryNest session"),
-]
 
 
 class SmartPromptCompleter(Completer):
@@ -54,7 +29,7 @@ class SmartPromptCompleter(Completer):
                 return []
 
             for dirpath, dirnames, filenames in os.walk(root):
-                dirnames[:] = [d for d in dirnames if d not in IGNORE_DIRS]
+                dirnames[:] = [d for d in dirnames if d not in DEFAULT_IGNORE_DIRS]
                 rel_dir = Path(dirpath).relative_to(root)
                 rel_dir_str = "" if str(rel_dir) == "." else f"{rel_dir}/".replace("\\", "/")
 

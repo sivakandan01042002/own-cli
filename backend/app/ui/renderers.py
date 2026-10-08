@@ -111,6 +111,10 @@ TOOL_BADGE_REGISTRY: Dict[str, Tuple[str, Any]] = {
     "generate_image": ("Image", _extract_image_gen_payload),
     "search_code": ("Search", lambda args: f"grep \"{args.get('query', '')}\""),
     "read_doc_url": ("Fetch", lambda args: str(args.get("url", ""))),
+    "browser_open": ("Browser", lambda args: f"open {args.get('url', '')}"),
+    "browser_screenshot": ("Browser", lambda args: f"screenshot -> {_format_full_path(args.get('output_path') or 'assets/screenshot.png')}"),
+    "browser_click": ("Browser", lambda args: f"click '{args.get('selector', '')}'"),
+    "browser_type": ("Browser", lambda args: f"type into '{args.get('selector', '')}'"),
 }
 
 

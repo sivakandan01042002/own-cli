@@ -30,9 +30,11 @@ from app.ui import (
     print_banner,
 )
 
+import os
 import uuid
 from datetime import datetime
 from app.core.redis_client import get_session_thread, deserialize_message
+from app.ui.dialogs import ensure_workspace_trusted_gate
 
 # CLI Application & Console Setup
 app = typer.Typer(help="QueryNest Multi-Agent Coding CLI", add_completion=False)
@@ -48,6 +50,8 @@ def _generate_session_id() -> str:
 def chat():
     """Starts the interactive QueryNest CLI session with multi-turn memory."""
     print_banner()
+    ensure_workspace_trusted_gate()
+
     session = FramedPromptSession(
         completer=SlashCommandCompleter(),
         style=CLI_STYLE,
@@ -132,6 +136,7 @@ def run(
 ):
     """Executes a single coding task from the command line and exits."""
     print_banner()
+    ensure_workspace_trusted_gate()
     category, payload = triage_user_input(task)
     if category == "task":
         execute_workflow(payload, test_path=test_path, interactive=False)

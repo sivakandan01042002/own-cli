@@ -78,3 +78,46 @@ def prompt_confirmation(message: str, default: bool = True) -> bool:
         return choice in ("y", "yes")
     except (EOFError, KeyboardInterrupt):
         return False
+
+
+def prompt_workspace_trust(workspace_path) -> bool:
+    """
+    Renders an interactive workspace trust permission picker on first launch in a new folder.
+    """
+    from app.ui.menu import show_interactive_menu
+
+    items = [
+        ("trust", "1. Yes, Trust this folder", "(Store sessions & enable tools)"),
+        ("restricted", "2. No, Restricted mode", "(Read-only / temporary session)"),
+    ]
+
+    choice = show_interactive_menu(
+        title=f"Trust this workspace folder?\n  {str(workspace_path)}",
+        items=items,
+        instruction="Use ↑/↓ to navigate, Enter to select, Esc to cancel",
+    )
+
+    return choice == "trust"
+
+
+def ensure_workspace_trusted_gate(workspace_path: str = "") -> bool:
+    """
+    Orchestrates the workspace trust gate dialog and updates storage.
+    Keeps CLI startup logic decoupled from dialog rendering.
+    """
+    import os
+    from app.core.storage import is_workspace_trusted, trust_workspace, get_canonical_workspace_path
+
+    target_path = get_canonical_workspace_path(workspace_path or os.getcwd())
+    if is_workspace_trusted(target_path):
+        return True
+
+    trusted = prompt_workspace_trust(target_path)
+    if trusted:
+        trust_workspace(target_path)
+        console.print("[dim green]✔ Workspace added to trusted list.[/dim green]\n")
+        return True
+    else:
+        console.print("[yellow]Workspace trust not granted. Running in restricted mode.[/yellow]\n")
+        return False
+

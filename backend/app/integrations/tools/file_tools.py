@@ -4,35 +4,22 @@ from pathlib import Path
 from langchain_core.tools import tool
 from rich.console import Console
 from rich.syntax import Syntax
+from app.constants.workspace import DEFAULT_IGNORE_DIRS
 from app.core.config import settings
+from app.core.guardrails import assert_inside_workspace, wrap_untrusted_content
 
 diff_console = Console()
 
-# Folders to ignore so we don't waste LLM tokens scanning them
-IGNORE_DIRS = {
-    ".git",
-    "__pycache__",
-    ".pytest_cache",
-    ".venv",
-    "venv",
-    "node_modules",
-    ".vscode",
-    ".idea",
-}
+IGNORE_DIRS = DEFAULT_IGNORE_DIRS
+
 
 
 def _resolve_safe_path(target_path: str) -> Path:
     """
-    Security check: Resolves target_path relative to WORKSPACE_ROOT
-    and verifies that it stays inside the workspace directory.
+    Security check: Resolves target_path strictly inside WORKSPACE_ROOT
+    using canonical resolution and is_relative_to boundary checks.
     """
-    root = settings.WORKSPACE_ROOT.resolve()
-    resolved = (root / target_path).resolve()
-
-    if not str(resolved).startswith(str(root)):
-        raise ValueError(f"Access denied: '{target_path}' is outside the workspace root.")
-
-    return resolved
+    return assert_inside_workspace(target_path)
 
 
 @tool
@@ -103,11 +90,12 @@ def read_file(file_path: str) -> str:
         if not lines:
             return f"File '{file_path}' is empty."
 
-        formatted_lines = [f"{idx + 1}: {line}" for idx, line in enumerate(lines)]
-        return "".join(formatted_lines)
+        formatted_lines = "".join([f"{idx + 1}: {line}" for idx, line in enumerate(lines)])
+        return wrap_untrusted_content(formatted_lines, source=file_path)
 
     except Exception as e:
         return f"Error reading file '{file_path}': {str(e)}"
+
 
 
 @tool

@@ -133,6 +133,17 @@ def deserialize_message(data: Dict[str, Any]) -> Any:
     return HumanMessage(content=content)
 
 
+from app.core.storage import (
+    save_permanent_session,
+    get_permanent_session,
+    list_permanent_sessions,
+    delete_permanent_session,
+    clear_permanent_sessions,
+    get_workspace_hash,
+)
+from app.core.auth import get_current_user
+
+
 def save_session_thread(
     session_id: str,
     title: str,
@@ -140,7 +151,7 @@ def save_session_thread(
     meta: Optional[Dict[str, Any]] = None,
 ) -> bool:
     """
-    Saves or updates a complete multi-turn session thread in Redis and local cache.
+    Saves or updates a complete multi-turn session thread in permanent disk storage (~/.querynest) and Redis.
     """
     now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     serialized_messages = [serialize_message(m) for m in messages]
@@ -148,38 +159,47 @@ def save_session_thread(
     # Calculate turn count (number of human messages)
     turn_count = sum(1 for m in serialized_messages if m.get("type") == "human")
 
+    # Attach current user identity (Google profile or guest)
+    user_info = get_current_user()
+
     thread_data: Dict[str, Any] = {
         "session_id": session_id,
         "title": title or "Untitled Session",
         "turn_count": turn_count,
         "updated_at": now_str,
+        "user": user_info,
+        "workspace_root": str(settings.WORKSPACE_ROOT),
         "messages": serialized_messages,
     }
     if meta:
         thread_data.update(meta)
 
-    # 1. Local disk cache fallback
+    # 1. Save to permanent unkillable home directory (~/.querynest/workspaces/<hash>/sessions/<id>.json)
+    save_permanent_session(settings.WORKSPACE_ROOT, session_id, thread_data)
+
+    # 2. Local workspace cache fallback
     try:
         SESSIONS_CACHE_DIR.mkdir(parents=True, exist_ok=True)
         file_path = SESSIONS_CACHE_DIR / f"{session_id}.json"
         file_path.write_text(json.dumps(thread_data, indent=2), encoding="utf-8")
     except Exception as e:
-        logger.debug(f"Failed to save session thread to disk: {e}")
+        logger.debug(f"Failed to save session thread to local workspace cache: {e}")
 
-    # 2. In-memory fallback
+    # 3. In-memory fallback
     _in_memory_threads[session_id] = thread_data
     if session_id in _in_memory_thread_order:
         _in_memory_thread_order.remove(session_id)
     _in_memory_thread_order.insert(0, session_id)
 
-    # 3. Redis persistence
+    # 4. Redis persistence (namespaced by workspace hash)
     client = get_redis_client()
     if client is not None:
         try:
-            client.set(f"querynest:thread:{session_id}", json.dumps(thread_data))
-            client.lrem("querynest:thread_index", 0, session_id)
-            client.lpush("querynest:thread_index", session_id)
-            client.ltrim("querynest:thread_index", 0, 49)
+            ws_hash = get_workspace_hash(settings.WORKSPACE_ROOT)
+            client.set(f"querynest:ws:{ws_hash}:thread:{session_id}", json.dumps(thread_data))
+            client.lrem(f"querynest:ws:{ws_hash}:thread_index", 0, session_id)
+            client.lpush(f"querynest:ws:{ws_hash}:thread_index", session_id)
+            client.ltrim(f"querynest:ws:{ws_hash}:thread_index", 0, 49)
             return True
         except Exception as e:
             logger.debug(f"Failed to save session thread to Redis: {e}")
@@ -189,18 +209,24 @@ def save_session_thread(
 
 def get_session_thread(session_id: str) -> Optional[Dict[str, Any]]:
     """
-    Retrieves full session thread by session_id from Redis or local cache.
+    Retrieves full session thread by session_id from Redis, permanent storage, or local cache.
     """
     client = get_redis_client()
     if client is not None:
         try:
-            raw = client.get(f"querynest:thread:{session_id}")
+            ws_hash = get_workspace_hash(settings.WORKSPACE_ROOT)
+            raw = client.get(f"querynest:ws:{ws_hash}:thread:{session_id}") or client.get(f"querynest:thread:{session_id}")
             if raw:
                 return json.loads(raw)
         except Exception as e:
             logger.debug(f"Failed to get session thread from Redis: {e}")
 
-    # Fallback to local cache
+    # Permanent home directory check
+    perm = get_permanent_session(settings.WORKSPACE_ROOT, session_id)
+    if perm:
+        return perm
+
+    # Fallback to local workspace cache
     file_path = SESSIONS_CACHE_DIR / f"{session_id}.json"
     if file_path.exists():
         try:
@@ -213,7 +239,7 @@ def get_session_thread(session_id: str) -> Optional[Dict[str, Any]]:
 
 def list_session_threads(limit: int = 20) -> List[Dict[str, Any]]:
     """
-    Lists distinct session threads ordered from most recent to oldest.
+    Lists distinct session threads for the current workspace ordered from most recent to oldest.
     """
     results: List[Dict[str, Any]] = []
     seen_ids = set()
@@ -221,7 +247,8 @@ def list_session_threads(limit: int = 20) -> List[Dict[str, Any]]:
     client = get_redis_client()
     if client is not None:
         try:
-            thread_ids = client.lrange("querynest:thread_index", 0, limit - 1)
+            ws_hash = get_workspace_hash(settings.WORKSPACE_ROOT)
+            thread_ids = client.lrange(f"querynest:ws:{ws_hash}:thread_index", 0, limit - 1)
             for tid in thread_ids:
                 if tid and tid not in seen_ids:
                     t_data = get_session_thread(tid)
@@ -230,6 +257,15 @@ def list_session_threads(limit: int = 20) -> List[Dict[str, Any]]:
                         seen_ids.add(tid)
         except Exception as e:
             logger.debug(f"Failed to list session threads from Redis: {e}")
+
+    # Fallback: scan permanent storage directory for this workspace
+    if len(results) < limit:
+        perm_sessions = list_permanent_sessions(settings.WORKSPACE_ROOT, limit=limit)
+        for ps in perm_sessions:
+            sid = ps.get("session_id")
+            if sid and sid not in seen_ids:
+                results.append(ps)
+                seen_ids.add(sid)
 
     # Fallback: scan local cache directory
     if len(results) < limit and SESSIONS_CACHE_DIR.exists():
@@ -253,24 +289,21 @@ def list_session_threads(limit: int = 20) -> List[Dict[str, Any]]:
         except Exception:
             pass
 
-    # Memory fallback
-    if not results:
-        for tid in _in_memory_thread_order[:limit]:
-            if tid in _in_memory_threads:
-                results.append(_in_memory_threads[tid])
-
     return results[:limit]
 
 
 def delete_session_thread(session_id: str) -> bool:
-    """Deletes a session thread from Redis and local cache."""
+    """Deletes a session thread from Redis, permanent storage, and local cache."""
     client = get_redis_client()
     if client is not None:
         try:
-            client.delete(f"querynest:thread:{session_id}")
-            client.lrem("querynest:thread_index", 0, session_id)
+            ws_hash = get_workspace_hash(settings.WORKSPACE_ROOT)
+            client.delete(f"querynest:ws:{ws_hash}:thread:{session_id}")
+            client.lrem(f"querynest:ws:{ws_hash}:thread_index", 0, session_id)
         except Exception:
             pass
+
+    delete_permanent_session(settings.WORKSPACE_ROOT, session_id)
 
     file_path = SESSIONS_CACHE_DIR / f"{session_id}.json"
     if file_path.exists():
@@ -286,7 +319,7 @@ def delete_session_thread(session_id: str) -> bool:
 
 
 def clear_session_records() -> bool:
-    """Clears all session records and threads from Redis, local disk, and memory."""
+    """Clears all session records and threads for current workspace from Redis, permanent disk, and memory."""
     global _in_memory_sessions, _in_memory_threads, _in_memory_thread_order
     _in_memory_sessions = []
     _in_memory_threads = {}
@@ -295,13 +328,15 @@ def clear_session_records() -> bool:
     client = get_redis_client()
     if client is not None:
         try:
-            client.delete("querynest:sessions")
-            client.delete("querynest:thread_index")
-            keys = client.keys("querynest:thread:*")
+            ws_hash = get_workspace_hash(settings.WORKSPACE_ROOT)
+            client.delete(f"querynest:ws:{ws_hash}:thread_index")
+            keys = client.keys(f"querynest:ws:{ws_hash}:thread:*")
             if keys:
                 client.delete(*keys)
         except Exception:
             pass
+
+    clear_permanent_sessions(settings.WORKSPACE_ROOT)
 
     if SESSIONS_CACHE_DIR.exists():
         try:

@@ -68,7 +68,7 @@ def should_continue_coder(state: CodingAgentState) -> str:
     for msg in messages:
         if hasattr(msg, "tool_calls"):
             for tc in msg.tool_calls:
-                if tc.get("name") in ("write_file", "delete_file"):
+                if tc.get("name") in ("write_file", "patch_file", "delete_file"):
                     has_file_writes = True
                     break
         if has_file_writes:

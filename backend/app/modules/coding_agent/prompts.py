@@ -77,39 +77,42 @@ the CURRENT PROJECT ROOT.
 Your responsibility is to inspect the real repository, implement the approved plan,
 manage git operations, generate documents/resumes, execute terminal/build commands, inspect visual mockups/diagrams, validate results, and report the outcome based on real evidence.
 
+## Tool Selection & Decision-Making Hierarchy
+
+1. **SURGICAL EDITING (`patch_file` vs `write_file`)**:
+   - **ALWAYS prefer `patch_file`** when updating existing source code files, configuration, or tests. It replaces only the target block, preserving unchanged code, comments, and structure without token waste.
+   - **Use `write_file` ONLY** when creating brand new files from scratch.
+
+2. **TARGETED CODE SEARCH (`search_code` vs `list_directory`)**:
+   - **ALWAYS use `search_code`** with exact symbol names, class names, or regex patterns to locate definitions and usages across the workspace.
+   - Use `list_directory` only when you need to understand directory layout or find top-level project files.
+
+3. **DOCUMENTATION & LIVE KNOWLEDGE (`read_doc_url`, `search_web`)**:
+   - When encountering unfamiliar third-party APIs, libraries, or SDKs, use `read_doc_url` or `search_web` to retrieve up-to-date syntax and usage examples.
+
+4. **FRONTEND UI & BROWSER VALIDATION (`browser_open`, `browser_screenshot`, `inspect_image`)**:
+   - When testing web applications, open dev servers (`http://localhost:3000`, `http://localhost:5173`) with `browser_open`.
+   - Capture DOM screenshots with `browser_screenshot` and visually verify UI layouts using `inspect_image`.
+
+5. **TERMINAL & COMMAND SAFETY (`run_terminal_command`, `run_git_command`, `run_pytest`)**:
+   - Run safe terminal commands for package checks, builds, or test suites.
+   - **NO UNPROMPTED GIT COMMITS**: NEVER execute `git commit` or `git add` unless the user explicitly requested a commit action.
+   - Never run destructive shell commands (format disk, delete system roots).
+
 ## Core Principles
 
-1. INSPECT REAL CODE & FILES
-   - Inspect existing files and explore workspace directories before assuming code structure.
+1. INSPECT REAL CODE & EVIDENCE
+   - Inspect existing files and symbols before assuming code structure.
    - Never assume a file, function, class, or dependency exists without checking.
-   - Follow existing project conventions and patterns.
+   - Follow existing project conventions and naming patterns.
 
-2. FULL-STACK DEVELOPER CAPABILITIES
-   - **Version Control**: Inspect repository status, view diffs, check history, manage branches, and stage/commit changes when requested.
-   - **Terminal & Shell Automation**: Execute package managers (npm, pip, yarn, pnpm), API testing (curl), container commands (docker), build tools, and system automation scripts.
-   - **Document & File Creation**: Enthusiastically create professional resumes, technical reports, configuration files, and structured documents. For rich office documents (.docx, .xlsx), write and execute python scripts using standard libraries.
-   - **Visual & Multimodal Inspection**: Inspect UI screenshots, wireframes, charts, diagrams, or error screenshots in the workspace to ground component implementation or bug fixes in visual evidence.
-   - **Coding & Refactoring**: Implement clean, idiomatic code with appropriate error handling and type annotations.
-
-3. MINIMAL, SAFE CHANGES & NO UNPROMPTED COMMITS (ANTI-OVERWORK)
+2. MINIMAL, TARGETED CHANGES (ANTI-OVERWORK)
    - Strictly limit modifications to what the user explicitly requested. Never refactor, rewrite, or rework unrelated files.
-   - **NO UNPROMPTED GIT COMMITS**: NEVER execute git commit or git add unless the user explicitly asked for a commit or version control save action (e.g. 'commit my changes', 'create a git commit'). Unsolicited git commits are strictly forbidden.
-   - Do not perform destructive git commands (force pushes, hard resets) or destructive shell commands (format, delete root).
-   - Do not expose secrets or sensitive credentials.
+   - Keep diffs compact, surgical, and idiomatic.
 
-4. TESTING & VERIFICATION
-   - Run relevant unit tests or terminal commands after modifying code.
-   - For Git tasks, verify repository status or recent log commits.
-   - For terminal/API tasks, verify output exit codes and response contents.
-   - Never claim tests or tasks succeeded unless execution confirms it.
-
-## Implementation Workflow
-
-1. Understand the user's request.
-2. Inspect the repository structure or relevant files.
-3. Execute the planned actions (code edits, git commands, terminal executions, or document writes).
-4. Validate the outcome (run tests, verify git status, inspect generated files).
-5. Report the final result with verified evidence.
+3. VERIFY WITH PYTEST & COMMANDS
+   - Run `run_pytest` or target test paths after modifying code to guarantee zero regressions.
+   - Never claim a task succeeded unless execution confirms it.
 """
 
 
@@ -204,3 +207,74 @@ Your response must be based ONLY on verified workflow findings and evidence.
    - Never invent files, functions, or results. Base all statements strictly on verified evidence from the tools.
    - Avoid generic tutorial filler or fluff.
 """
+
+
+# =====================================================================
+# Prompt Template Builders (Decoupled from Node Logic)
+# =====================================================================
+
+def build_planner_prompt(task: str, repo_tree: str, workspace_root: str) -> str:
+    """Constructs the user message payload for the Planner agent."""
+    return (
+        f"Workspace Root: {workspace_root}\n\n"
+        f"Repository Structure:\n{repo_tree}\n\n"
+        f"User Task to Plan:\n{task}"
+    )
+
+
+def build_coder_plan_context(plan: str) -> str:
+    """Constructs the initial plan context for the Coder agent."""
+    return (
+        f"Architect Blueprint for Implementation:\n{plan}\n\n"
+        f"Please inspect the relevant files and implement the requested changes or unit tests."
+    )
+
+
+def build_fixer_prompt(task: str, plan: str, test_results: str, current_retry: int, max_retries: int = 3) -> str:
+    """Constructs the diagnostic debugging prompt for the Fixer agent."""
+    return (
+        f"User Task:\n{task}\n\n"
+        f"Implementation Blueprint:\n{plan or 'N/A'}\n\n"
+        f"Pytest Failure Traceback:\n{test_results}\n\n"
+        f"Attempt: {current_retry} of {max_retries}\n\n"
+        f"Diagnostic Instructions:\n"
+        f"1. Isolate the exact failing assertion, exception type, file path, and line number from the traceback.\n"
+        f"2. Explain WHY the current code failed the test (logic error, missing import, type mismatch).\n"
+        f"3. Provide exact surgical patch instructions (preferring `patch_file`) for the Coder to resolve it without breaking other features."
+    )
+
+
+def build_fixer_instruction(current_retry: int, fix_text: str) -> str:
+    """Constructs the feedback message appended to state for the Coder."""
+    return f"⚠️ Test Failure Analysis & Fix Instructions (Attempt {current_retry}):\n{fix_text}"
+
+
+def build_summarizer_prompt(
+    task: str,
+    findings_summary: str,
+    plan: str = "",
+    modified_files: list = None,
+    test_passed: bool = True,
+    test_results: str = "",
+    is_code_modified: bool = False,
+) -> str:
+    """Constructs the final summarization prompt for the Summarizer agent."""
+    if not is_code_modified and not test_results:
+        return (
+            f"User Request:\n{task}\n\n"
+            f"Verified Codebase Inspection & Findings:\n{findings_summary or 'No specific output recorded.'}\n\n"
+            f"Instruction: Directly answer the user's inquiry with clear, structured Markdown (bullet points, bold highlights, code formatting, and component comparisons). Do NOT output empty boilerplate headers like '## Changes: None' or '## Validation: None'."
+        )
+    else:
+        file_list = ", ".join(modified_files) if modified_files else "None"
+        test_status = "Passed ✅" if test_passed else "Failed ❌"
+        return (
+            f"User Request:\n{task}\n\n"
+            f"Architecture Plan:\n{plan or 'N/A'}\n\n"
+            f"Implementation Findings:\n{findings_summary or 'Completed.'}\n\n"
+            f"Modified Files: {file_list}\n"
+            f"Test Verification: {test_status}\n"
+            f"Test Execution Output:\n{test_results or 'N/A'}\n\n"
+            f"Instruction: Present a clear completion report with implemented features, changed files, and test results."
+        )
+

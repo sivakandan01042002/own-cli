@@ -69,7 +69,7 @@ def search_web(query: str, max_results: int = 5) -> str:
         formatted_output = "\n---\n".join(results)
         # Cache in Redis for 2 hours (7200 seconds)
         set_cached_response(cache_hash, formatted_output, ttl=7200)
-        return formatted_output
+        return wrap_untrusted_content(formatted_output, source=f"web_search:{query}")
 
     except Exception as e:
         return f"Error executing web search for '{query}': {str(e)}"
@@ -91,6 +91,7 @@ def read_doc_url(url: str, max_length: int = 5000) -> str:
     """
     import re
     import urllib.request
+    from app.core.guardrails import wrap_untrusted_content
 
     clean_url = url.strip()
     if not clean_url.startswith(("http://", "https://")):
@@ -99,7 +100,7 @@ def read_doc_url(url: str, max_length: int = 5000) -> str:
     cache_hash = hashlib.md5(f"docurl:{clean_url}".encode("utf-8")).hexdigest()
     cached = get_cached_response(cache_hash)
     if cached:
-        return f"[Cached Documentation for {clean_url}]\n{cached}"
+        return wrap_untrusted_content(f"[Cached Documentation for {clean_url}]\n{cached}", source=clean_url)
 
     try:
         req = urllib.request.Request(
@@ -140,8 +141,9 @@ def read_doc_url(url: str, max_length: int = 5000) -> str:
 
         # Cache in Redis for 24 hours
         set_cached_response(cache_hash, cleaned, ttl=86400)
-        return cleaned
+        return wrap_untrusted_content(cleaned, source=clean_url)
 
     except Exception as e:
         return f"Error fetching documentation from '{url}': {str(e)}"
+
 

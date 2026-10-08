@@ -1,3 +1,4 @@
+import sys
 from datetime import datetime
 from typing import List, Any, Optional
 from rich.console import Console
@@ -6,6 +7,7 @@ from rich.console import Console
 from app.core.config import settings
 from app.core.redis_client import get_session_records, clear_session_records
 from app.integrations.tools import ALL_TOOLS
+from app.constants.commands import COMMAND_DEFINITIONS, SLASH_COMMANDS_LIST
 
 console = Console()
 
@@ -13,20 +15,8 @@ console = Console()
 task_history: List[str] = []
 
 # List of available slash commands for autocompletion
-SLASH_COMMANDS = [
-    "/help",
-    "/model",
-    "/mode",
-    "/mode normal",
-    "/mode accept-edits",
-    "/session",
-    "/sessions",
-    "/tools",
-    "/history",
-    "/clear",
-    "/exit",
-    "/quit",
-]
+SLASH_COMMANDS = SLASH_COMMANDS_LIST
+
 
 
 def format_relative_time(dt_input: Any) -> str:
@@ -69,24 +59,52 @@ def record_task_in_history(task: str):
     task_history.append(task)
 
 
+def handle_login(args: str = "") -> Optional[str]:
+    """Logs into Google OAuth 2.0 via browser-based OAuth flow."""
+    from app.core.auth import login_google
+    login_google()
+    return None
+
+
+def handle_whoami(args: str = "") -> Optional[str]:
+    """Displays current authenticated Google user profile and workspace info."""
+    import os
+    from app.core.auth import get_current_user
+    from app.core.storage import get_canonical_workspace_path, get_workspace_hash
+
+    user = get_current_user()
+    ws_path = get_canonical_workspace_path(os.getcwd())
+    ws_hash = get_workspace_hash(ws_path)
+
+    console.print("\n[bold cyan]QueryNest Identity & Workspace Status[/bold cyan]")
+    if user:
+        console.print(f"  • [bold white]User:[/] {user.get('name', 'N/A')} ([bold green]{user.get('email', 'N/A')}[/bold green])")
+        console.print(f"  • [bold white]Auth Provider:[/] Google OAuth 2.0")
+        if user.get("picture"):
+            console.print(f"  • [bold white]Avatar:[/] [dim]{user.get('picture')}[/dim]")
+    else:
+        console.print("  • [bold white]User:[/] [dim]Anonymous / Local Session[/dim] (Use [bold cyan]/login[/bold cyan] to connect Google)")
+
+    console.print(f"  • [bold white]Workspace:[/] [yellow]{ws_path}[/yellow]")
+    console.print(f"  • [bold white]Workspace Hash:[/] [dim]{ws_hash[:12]}[/dim]\n")
+    return None
+
+
+def handle_logout(args: str = "") -> Optional[str]:
+    """Logs out and clears saved Google credentials."""
+    from app.core.auth import logout_user
+    logout_user()
+    return None
+
+
 def handle_help(args: str = "") -> Optional[str]:
     """Displays the command reference guide with interactive selection."""
     from app.ui.menu import show_interactive_menu
-    commands_info = [
-        ("/help", "/help", "Display this command reference guide"),
-        ("/model", "/model", "Interactively select and switch active AI model"),
-        ("/mode", "/mode", "Toggle execution mode (Normal Safe vs Auto Accept-All)"),
-        ("/sessions", "/sessions", "List & restore past coding sessions from Redis"),
-        ("/session clear", "/session clear", "Reset session history in Redis"),
-        ("/tools", "/tools", "Inspect all registered agent tools and signatures"),
-        ("/history", "/history", "View tasks submitted in the current live terminal session"),
-        ("/clear", "/clear", "Clear terminal screen"),
-        ("/exit", "/exit", "Close QueryNest session"),
-    ]
     return show_interactive_menu(
-        items=commands_info,
+        items=COMMAND_DEFINITIONS,
         instruction="Use ↑/↓ to navigate, Enter to select, Esc to cancel",
     )
+
 
 
 def handle_model(args: str = "") -> Optional[str]:
@@ -230,6 +248,9 @@ def handle_history(args: str = "") -> Optional[str]:
 # Command dispatcher table
 COMMAND_DISPATCHER = {
     "/help": handle_help,
+    "/login": handle_login,
+    "/whoami": handle_whoami,
+    "/logout": handle_logout,
     "/model": handle_model,
     "/mode": handle_mode,
     "/new": handle_new,

@@ -1,8 +1,9 @@
 import logging
 import warnings
-from typing import Literal, Optional, Sequence, Dict, Tuple
+from typing import Literal, Optional, Sequence, Dict, Tuple, Any
 from langchain_core.language_models.chat_models import BaseChatModel
 from langchain_core.tools import BaseTool
+
 
 # Suppress AFC and Google GenAI library log notices
 logging.getLogger("google.genai").setLevel(logging.ERROR)
@@ -96,3 +97,63 @@ def get_cached_coder_llm(tools: Optional[Sequence[BaseTool]] = None) -> BaseChat
         base = get_cached_llm(provider=selected_provider, model_name=selected_model)
         _CODER_LLM_CACHE[cache_key] = base.bind_tools(bound_tools)
     return _CODER_LLM_CACHE[cache_key]
+
+
+def resilient_llm_invoke(
+    messages,
+    tools: Optional[Sequence[BaseTool]] = None,
+    max_retries: int = 3,
+    initial_delay: float = 1.0,
+) -> Any:
+    """
+    Invokes LLM with exponential backoff on transient errors (429, 503, rate limits, timeouts)
+    and automatic provider fallback (e.g. Gemini -> Groq) to ensure high resilience.
+    """
+    import time
+    from app.core.user_config import get_active_provider
+
+    primary_provider = get_active_provider()
+    # Ordered candidate providers: primary first, then remaining
+    candidate_providers = [primary_provider]
+    for p in ["gemini", "groq"]:
+        if p not in candidate_providers:
+            candidate_providers.append(p)
+
+    last_error: Optional[Exception] = None
+
+    for provider in candidate_providers:
+        try:
+            llm_inst = get_llm(provider=provider)
+            if tools is not None:
+                llm_inst = llm_inst.bind_tools(tools)
+
+            for attempt in range(max_retries):
+                try:
+                    return llm_inst.invoke(messages)
+                except Exception as e:
+                    last_error = e
+                    err_msg = str(e).lower()
+                    # Check for rate limit, quota, timeout, or transient 5xx errors
+                    is_transient = any(
+                        keyword in err_msg
+                        for keyword in [
+                            "429", "503", "500", "504", "rate limit", "resourceexhausted",
+                            "quota", "timeout", "timed out", "overloaded", "service unavailable",
+                            "connection error", "connection reset"
+                        ]
+                    )
+                    if is_transient and attempt < max_retries - 1:
+                        sleep_time = initial_delay * (2 ** attempt)
+                        time.sleep(sleep_time)
+                        continue
+                    else:
+                        # Non-transient error or retries exhausted for this provider
+                        break
+        except Exception as prov_err:
+            last_error = prov_err
+            continue
+
+    if last_error:
+        raise last_error
+    raise RuntimeError("All LLM providers failed to generate a response.")
+

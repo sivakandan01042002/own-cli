@@ -1,57 +1,68 @@
+import os
 import re
-from typing import Tuple, Literal, Optional, Dict, List, Any
+from pathlib import Path
+from typing import Tuple, Literal, Optional, Dict, List, Any, Union
+
+from app.constants.guardrails import (
+    PURE_GREETING_PATTERNS,
+    ACKNOWLEDGMENT_PATTERNS,
+    BLOCKED_INPUT_PATTERNS,
+    DESTRUCTIVE_COMMAND_PATTERNS,
+    MODIFYING_COMMAND_KEYWORDS,
+    TECHNICAL_KEYWORDS,
+    ACTION_VERBS,
+    QUESTION_WORDS,
+    DEFAULT_GREETING_MSG,
+    DEFAULT_ACKNOWLEDGMENT_MSG,
+    DEFAULT_SAFETY_DENIAL_MSG,
+)
+from app.constants.workspace import DEFAULT_IGNORE_DIRS
+from app.core.config import settings
 
 
-# Strict regex patterns for standalone greetings and pleasantries
-PURE_GREETING_PATTERNS = [
-    r"^(hi|hello|hey|howdy|greetings|sup|yo)(\s+(there|querynest|bot|assistant|friend|everyone))?[\s!.]*$",
-    r"^good\s+(morning|afternoon|evening|day)[\s!.]*$",
-]
+class SecurityViolationError(Exception):
+    """Raised when an operation violates workspace sandboxing or security policy."""
+    pass
 
-ACKNOWLEDGMENT_PATTERNS = [
-    r"^(thanks|thank you|thx|cheers|got it|understood|all good)[\s,!.]*(\s*(thanks|thank you|querynest|bro))?[\s!.]*$",
-    r"^(ok|okay|sounds good)[\s,!.]*$",
-]
+
+def assert_inside_workspace(path: Union[str, Path], workspace_root: Optional[Union[str, Path]] = None) -> Path:
+    """
+    Ensures that a path is strictly inside the workspace boundary using canonical resolution.
+    Defends against:
+    - Path traversal ('../../etc/passwd')
+    - Prefix collision attacks ('/workspace-attacker' matching '/workspace')
+    - Symlink escapes
+    """
+    ws_root = (Path(workspace_root) if workspace_root else settings.WORKSPACE_ROOT).resolve()
+    resolved = (ws_root / Path(path)).resolve() if not Path(path).is_absolute() else Path(path).resolve()
+
+    try:
+        is_rel = resolved.is_relative_to(ws_root)
+    except AttributeError:
+        # Fallback for Python < 3.9
+        is_rel = os.path.commonpath([str(resolved), str(ws_root)]) == str(ws_root)
+
+    if not is_rel:
+        raise SecurityViolationError(
+            f"Security Sandbox Violation: Access denied for path '{resolved}' outside workspace '{ws_root}'"
+        )
+
+    return resolved
+
+
+def wrap_untrusted_content(content: str, source: str = "repository") -> str:
+    """
+    Defense-in-depth wrapper: isolates untrusted file/web/browser content
+    so LLM reasoning recognizes it as data rather than instructions.
+    """
+    return f'<untrusted_repository_content source="{source}">\n{content}\n</untrusted_repository_content>'
+
 
 # Conversational prefix stripper (e.g. "Hi, ...", "Hey QueryNest, ...")
 CONVERSATIONAL_PREFIX_REGEX = re.compile(
     r"^(hi|hello|hey|howdy|good\s+(morning|afternoon|evening))\s*[,!.:-]*\s*(querynest\s*[,!.:-]*\s*)?",
     re.IGNORECASE,
 )
-
-# High-risk destructive or prompt-injection patterns
-BLOCKED_PATTERNS = [
-    # Injections
-    r"ignore (all )?previous instructions",
-    r"disregard (all )?system (prompts|rules)",
-    r"reveal (your )?system prompt",
-    r"leak (your )?instructions",
-    # Destructive
-    r"format\s+[a-z]:",
-    r"rmdir\s+/s",
-    r"del\s+/f\s+/s\s+/q",
-    r"drop\s+database",
-    r":\(\)\s*\{\s*:\s*\|\s*:\s*&\s*\}\s*;",
-]
-
-# Technical indicators that strongly signal a coding task/question
-TECHNICAL_KEYWORDS = {
-    "cli.py", "main.py", "config.py", "nodes.py", "state.py", "edges.py", "prompts.py",
-    "python", "fastapi", "pytest", "redis", "langgraph", "endpoint", "api", "function",
-    "class", "method", "test", "build", "create", "fix", "debug", "run", "why", "what",
-    "how", "purpose", "explain", "refactor", "import", "package", "module", "code",
-    "docker", "database", "schema", "table", "crud", "query", "route", "git",
-}
-
-ACTION_VERBS = {
-    "build", "create", "make", "fix", "debug", "add", "update", "modify",
-    "change", "delete", "remove", "write", "test", "run", "execute", "install",
-    "commit", "push", "pull", "diff", "checkout", "refactor", "explain",
-    "show", "list", "check", "inspect", "find", "search", "generate",
-    "format", "lint", "deploy", "setup", "start", "stop", "restart",
-}
-
-QUESTION_WORDS = {"why", "how", "what", "where", "who", "when", "which"}
 
 
 def is_acknowledgment_or_pleasantry(text: str) -> bool:
@@ -75,17 +86,42 @@ def is_pure_greeting(text: str) -> bool:
 def get_greeting_response(text: str = "") -> str:
     """Returns a concise, compact greeting or polite acknowledgment message."""
     if is_acknowledgment_or_pleasantry(text):
-        return "[white]You're very welcome! Let me know if you need anything else.[/white]"
-    return "[white]👋 [bold]Hi! I'm QueryNest[/bold] — your multi-agent coding assistant. Type a task or [bold cyan]/help[/bold cyan] for commands.[/white]"
+        return DEFAULT_ACKNOWLEDGMENT_MSG
+    return DEFAULT_GREETING_MSG
 
 
 def check_safety_guardrails(text: str) -> Optional[str]:
     """Scans input for destructive commands or malicious injections."""
     cleaned = text.strip().lower()
-    for pattern in BLOCKED_PATTERNS:
+    for pattern in BLOCKED_INPUT_PATTERNS:
         if re.search(pattern, cleaned):
-            return "I am an AI coding assistant focused on software engineering. Please provide a programming or technical task."
+            return DEFAULT_SAFETY_DENIAL_MSG
     return None
+
+
+def audit_terminal_command(command: str) -> Tuple[str, str]:
+    """
+    Audits a shell command against security tiers:
+    - 'blocked': Dangerous destructive command (Execution denied)
+    - 'modifying': Modifying/network/package operation (Requires explicit user confirmation)
+    - 'safe': Read-only or safe local command (e.g. pytest, git status, ls)
+    """
+    clean = command.strip()
+    clean_lower = clean.lower()
+
+    # Tier 1: Check blocked destructive patterns
+    for pat in DESTRUCTIVE_COMMAND_PATTERNS:
+        if re.search(pat, clean_lower):
+            return "blocked", f"Execution blocked by security policy: '{clean}' is potentially destructive."
+
+    # Tier 2: Check modifying operations
+    for kw in MODIFYING_COMMAND_KEYWORDS:
+        if kw in clean_lower:
+            return "modifying", f"Modifying operation: '{clean}' modifies packages, services, or repository state."
+
+    # Tier 3: Safe / Read-Only
+    return "safe", clean
+
 
 
 CLIPBOARD_IMAGE_REGISTRY: Dict[str, str] = {}
@@ -167,18 +203,6 @@ def extract_prompt_files(text: str) -> Tuple[str, List[Dict[str, Any]]]:
     from app.core.config import settings
     from pathlib import Path
 
-    IGNORE_DIRS = {
-        ".git",
-        "__pycache__",
-        ".pytest_cache",
-        ".venv",
-        "venv",
-        "node_modules",
-        ".vscode",
-        ".idea",
-        ".querynest_cache",
-    }
-
     pinned_files: List[Dict[str, Any]] = []
     root = settings.WORKSPACE_ROOT.resolve()
 
@@ -205,7 +229,7 @@ def extract_prompt_files(text: str) -> Tuple[str, List[Dict[str, Any]]]:
         if not target_path:
             try:
                 for p in root.rglob("*"):
-                    if any(part in IGNORE_DIRS for part in p.parts):
+                    if any(part in DEFAULT_IGNORE_DIRS for part in p.parts):
                         continue
                     rel = p.relative_to(root)
                     rel_str = str(rel).replace("\\", "/")
@@ -244,7 +268,7 @@ def extract_prompt_files(text: str) -> Tuple[str, List[Dict[str, Any]]]:
                 entries = [
                     f"📄 {p.relative_to(root)}"
                     for p in target_path.rglob("*")
-                    if p.is_file() and not any(part in IGNORE_DIRS for part in p.parts)
+                    if p.is_file() and not any(part in DEFAULT_IGNORE_DIRS for part in p.parts)
                 ]
                 pinned_files.append({
                     "path": rel_path_str,
