@@ -47,21 +47,31 @@ def _get_shimmer_message_for_tool(name: str, args: Dict[str, Any]) -> str:
         return "Reading file..."
     elif name == "write_file":
         return "Writing file..."
+    elif name == "patch_file":
+        return "Patching file..."
     elif name == "delete_file":
         return "Deleting file..."
     elif name == "list_directory":
         return "Listing files..."
+    elif name == "search_code":
+        q = args.get("query", "")
+        return f"Searching codebase for '{q}'..." if q else "Searching codebase..."
     elif name == "search_web":
         query = args.get("query", "")
         if query:
             return f"Searching web for '{query}'..."
         return "Searching web..."
+    elif name == "read_doc_url":
+        url = args.get("url", "")
+        return f"Fetching docs from {url}..." if url else "Fetching documentation..."
     elif name == "run_git_command":
         return "Running git command..."
     elif name == "run_terminal_command":
         return "Running command..."
     elif name == "inspect_image":
         return "Inspecting image..."
+    elif name == "generate_image":
+        return "Generating image with Flux/AI..."
     return "Executing action..."
 
 

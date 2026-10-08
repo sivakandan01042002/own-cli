@@ -14,9 +14,9 @@ A quick reference guide for the multi-agent system implemented in this workspace
 
 ### 2. 💻 Coder Agent (`coder_node`)
 * **Role:** Senior Full-Stack Developer & Automation Engineer
-* **Mission:** Inspects existing project files, implements requested features, executes safe Git commands, generates documents/resumes, runs terminal commands (npm, pip, docker, curl, powershell), inspects visual images/mockups with Multimodal Vision, writes unit tests, or explains project code based on verified evidence.
-* **Tools Used:** `write_file`, `read_file`, `list_directory`, `search_web`, `run_git_command`, `run_terminal_command`, `run_pytest`, `delete_file`, `inspect_image`
-* **Output:** `state["messages"]` (with tool calls for file inspection/creation/git/terminal/vision), `state["coder_findings"]`
+* **Mission:** Inspects existing project files, implements requested features, executes safe Git commands, generates documents/resumes, runs terminal commands (npm, pip, docker, curl, powershell), inspects visual images/mockups with Multimodal Vision, generates AI images from prompts, searches symbols with code grep, surgically patches code blocks, reads documentation URLs, writes unit tests, or explains project code based on verified evidence.
+* **Tools Used:** `write_file`, `read_file`, `patch_file`, `delete_file`, `list_directory`, `search_code`, `search_web`, `read_doc_url`, `run_git_command`, `run_terminal_command`, `run_pytest`, `inspect_image`, `generate_image`
+* **Output:** `state["messages"]` (with tool calls for file inspection/creation/git/terminal/vision/image gen), `state["coder_findings"]`
 
 ### 3. ⚙️ Tool Execution Node (`tool_node`)
 * **Role:** Python Execution Engine (Prebuilt LangGraph `ToolNode`)
@@ -47,7 +47,7 @@ A quick reference guide for the multi-agent system implemented in this workspace
 
 2. **`should_continue_coder` (After `coder`)**:
    * Has tool calls $\rightarrow$ `tools` $\rightarrow$ `coder` (Loop).
-   * Code was modified (`write_file` or `delete_file` called) $\rightarrow$ `validator` (Runs Pytest).
+   * Code was modified (`write_file`, `patch_file`, or `delete_file` called) $\rightarrow$ `validator` (Runs Pytest).
    * No code modified (read-only/Git/Vision/Q&A) $\rightarrow$ `summarizer` (Direct answer, skips Pytest).
 
 3. **`should_retry_or_finish` (After `validator`)**:
@@ -64,19 +64,23 @@ A quick reference guide for the multi-agent system implemented in this workspace
 | `list_directory` | `dir_path: str = "."` | Explore project file hierarchy |
 | `read_file` | `file_path: str` | Read source code with line numbers |
 | `write_file` | `file_path: str, content: str` | Create or update files/documents/scripts on disk |
+| `patch_file` | `file_path: str, target_content: str, replacement_content: str` | Surgically replace code blocks without rewriting whole file |
 | `delete_file` | `file_path: str` | Delete file from workspace |
+| `search_code` | `query: str, path: str = ".", file_pattern: str = "*"` | Fast Grep & symbol search across repository |
 | `run_git_command` | `subcommand: str, timeout: int = 30` | Safe git execution (status, diff, branch, commit, log) |
 | `run_terminal_command` | `command: str, timeout: int = 60` | Shell commands (npm, pip, docker, curl, powershell, bash) |
 | `run_pytest` | `test_path: str = ""` | Run pytest suite and capture output |
 | `search_web` | `query: str, max_results: int = 5` | DuckDuckGo search for live docs (Cached in Redis) |
-| `inspect_image` | `image_path: str, prompt: str = "..."` | Multimodal Vision inspection of UI mockups, diagrams, and error screenshots (Zero-Cost / Cached in Redis) |
+| `read_doc_url` | `url: str, max_length: int = 5000` | Scrapes external web links or API docs as clean text |
+| `inspect_image` | `image_path: str, prompt: str = "..."` | Multimodal Vision inspection of UI mockups, diagrams, and error screenshots (Cached in Redis) |
+| `generate_image` | `prompt: str, output_path: str = "", width: int = 1024, height: int = 1024` | Generates AI images from text prompts using Flux.1/SDXL and saves to disk |
 
 ---
 
 ## 🛡️ Reliability & Guardrail Rules
 
 1. **Strict Tool Name Enforcement & Sanitization**:
-   * The Coder agent is strictly restricted to the 9 tools listed above.
+   * The Coder agent is strictly restricted to the 13 tools listed above.
    * `coder_node` automatically sanitizes `tool_calls` by filtering out any hallucinated tool names before handing off to `ToolNode`, preventing runtime validation crashes.
 
 2. **Zero-Cost Multimodal & Web Search Caching**:

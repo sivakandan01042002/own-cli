@@ -149,3 +149,90 @@ def inspect_image(image_path: str, prompt: str = "Analyze this image in detail a
 
     except Exception as e:
         return f"Error analyzing image '{image_path}': {str(e)}"
+
+
+@tool
+def generate_image(
+    prompt: str,
+    output_path: str = "",
+    width: int = 1024,
+    height: int = 1024,
+) -> str:
+    """
+    Generates a high-resolution AI image from a text prompt and saves it to disk in the workspace.
+    Supports creating logos, UI mockups, diagrams, illustrations, banners, and concept art.
+    Uses high-speed Flux.1/SDXL zero-cost image synthesis by default.
+
+    Args:
+        prompt: Detailed descriptive prompt for the image (e.g. 'A sleek modern neon dashboard icon with blue accents, vector style').
+        output_path: Optional relative file path to save the generated image (e.g. 'assets/logo.png'). If omitted, saved to 'assets/generated_<timestamp>.png'.
+        width: Image width in pixels (default: 1024, range: 256-2048).
+        height: Image height in pixels (default: 1024, range: 256-2048).
+
+    Returns:
+        Confirmation message with the resolved output file path and image dimensions.
+    """
+    import time
+    import urllib.parse
+    import urllib.request
+
+    try:
+        clean_prompt = prompt.strip()
+        if not clean_prompt:
+            return "Error: Prompt cannot be empty for image generation."
+
+        # Determine target output path
+        root = settings.WORKSPACE_ROOT.resolve()
+        if not output_path or not output_path.strip():
+            timestamp = int(time.time())
+            target_rel = Path("assets") / f"generated_{timestamp}.png"
+        else:
+            target_rel = Path(output_path.strip().replace("\\", "/"))
+
+        # Ensure safe workspace resolution
+        target_file = (root / target_rel).resolve()
+        if not str(target_file).startswith(str(root)):
+            return f"Error: Target path '{output_path}' is outside the workspace."
+
+        # Clamp width and height
+        w = max(256, min(width, 2048))
+        h = max(256, min(height, 2048))
+
+        # Build Pollinations image URL
+        encoded_prompt = urllib.parse.quote(clean_prompt)
+        image_url = f"https://image.pollinations.ai/prompt/{encoded_prompt}?width={w}&height={h}&nologo=true"
+
+        # Download image bytes with proper headers
+        req = urllib.request.Request(
+            image_url,
+            headers={
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
+                "Referer": "https://pollinations.ai/",
+                "Origin": "https://pollinations.ai",
+                "Accept": "image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8",
+            },
+        )
+        with urllib.request.urlopen(req, timeout=45) as response:
+            if response.status != 200:
+                return f"Error: Failed to download generated image (HTTP status {response.status})."
+            img_data = response.read()
+
+        if not img_data or len(img_data) < 500:
+            return "Error: Received empty or invalid image response from generation engine."
+
+        # Ensure parent directory exists and write image
+        target_file.parent.mkdir(parents=True, exist_ok=True)
+        with open(target_file, "wb") as f:
+            f.write(img_data)
+
+        rel_out = target_file.relative_to(root).as_posix()
+        size_kb = len(img_data) / 1024
+
+        return (
+            f"Successfully generated image from prompt '{clean_prompt[:60]}...' "
+            f"and saved to '{rel_out}' ({w}x{h} px, {size_kb:.1f} KB)."
+        )
+
+    except Exception as e:
+        return f"Error generating image from prompt '{prompt[:60]}': {str(e)}"
+

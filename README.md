@@ -123,14 +123,19 @@ class CodingAgentState(TypedDict):
 
 | Tool | Signature | Description |
 | :--- | :--- | :--- |
-| `list_directory` | `dir_path: str = "."` | Lists directory structure, filtering `.git`, `__pycache__`, `.venv`. |
+| `list_directory` | `dir_path: str = "."` | Lists directory structure, filtering `.git`, `__pycache__`, `.venv`, `assets`. |
 | `read_file` | `file_path: str` | Reads file content with line numbers for inspection and debugging. |
-| `write_file` | `file_path: str, content: str` | Creates or updates files on disk, auto-creating missing directories. |
+| `write_file` | `file_path: str, content: str` | Creates or updates files on disk, auto-creating missing directories with diff view. |
+| `patch_file` | `file_path: str, target_content: str, replacement_content: str` | Surgically finds and replaces specific lines in a file without rewriting the entire file. |
 | `delete_file` | `file_path: str` | Safely removes files from the workspace. |
+| `search_code` | `query: str, path: str = ".", file_pattern: str = "*"` | Fast Grep & symbol scanner across files in the project. |
 | `run_git_command` | `subcommand: str, timeout: int = 30` | Safe git execution (`status`, `diff`, `branch`, `commit`, `log`) with UTF-8 encoding. |
 | `run_terminal_command` | `command: str, timeout: int = 60` | Executes shell commands in a sandboxed subprocess. |
 | `run_pytest` | `test_path: str = ""` | Runs pytest test suite and captures exit codes, stdout, and tracebacks. |
 | `search_web` | `query: str, max_results: int = 5` | DuckDuckGo search integration cached in Redis. |
+| `read_doc_url` | `url: str, max_length: int = 5000` | Scrapes external web links, GitHub READMEs, or API references as clean text. |
+| `inspect_image` | `image_path: str, prompt: str = "..."` | Multimodal Vision inspection of UI mockups, diagrams, and error screenshots (cached in Redis). |
+| `generate_image` | `prompt: str, output_path: str = "", width: int = 1024, height: int = 1024` | Generates high-resolution AI images from text prompts using Flux.1/SDXL and saves to disk. |
 
 ---
 
@@ -138,23 +143,22 @@ class CodingAgentState(TypedDict):
 
 QueryNest includes a framed terminal CLI built on **Prompt Toolkit** and **Rich**, modularized under `app/ui/`:
 
+* **Multi-Turn Conversation Threads (`cli.py` & `redis_client.py`):**
+  * Maintains conversation context across multiple turns. Restoring a session via `/sessions` recovers the full chat history so you can continue the conversation seamlessly.
+* **Smart Autocompletion & Context Pinning (`completer.py` & `guardrails.py`):**
+  * Type `/` to autocomplete slash commands.
+  * Type `@` (e.g. `@backend/app/cli.py`) to autocomplete and pin workspace files/directories directly into the prompt context.
 * **Interactive Arrow-Key Menu Picker (`menu.py`):**
   * Full terminal arrow navigation (`↑` / `↓` or `k` / `j`) with active blue pointer (`  > `).
   * Auto-erasure on select/dismiss (`erase_when_done=True`) leaving a pristine terminal history.
-* **Prompt Buffer Pre-Filling (`cli.py`):**
-  * Selecting a previous task from `/sessions` or a command from `/help` automatically loads it into the input prompt buffer (`❯ <selected_item>`), ready for immediate execution or editing.
 * **Pre-Tool Permission Confirmation Gate (`dialogs.py`):**
-  * Displays requested tool actions (e.g. `Git: git status`) and prompts for confirmation (`[1] Yes, Do It`, `[2] No, Cancel / Skip`) before executing dangerous disk or git modifications.
-* **Semantic Triage & Anti-Overwork Guardrails (`guardrails.py`):**
-  * Classifies natural language inputs. Expressions of appreciation (*"Great work. Thanks!"*, *"looks good"*) are triaged as greetings with 0 tool calls and no unprompted git commits.
+  * Displays requested tool actions (e.g. `Git: git status`) and prompts for confirmation (`[1] Yes, Do It`, `[2] No, Cancel / Skip`) before executing disk or git modifications.
 * **Framed Native Input Prompt (`prompt.py`):**
-  * Native top and bottom window dividers (`Window(char="─")`) framing the active input line, with floating autocomplete dropdown for `/` commands.
+  * Native framed input box with dynamic mode and model indicators in the header.
 * **Live Shimmer Wave Animations (`shimmer.py`):**
-  * Real-time animated cement wave with green shimmering dots during active tool execution (`Reading file...`, `Running command...`, `Analyzing codebase...`).
+  * Real-time animated cement wave with green shimmering dots during active tool execution (`Generating image...`, `Searching codebase...`, `Reading file...`).
 * **Live Markdown Streaming (`markdown_stream.py`):**
   * Streams LLM responses with bold white section headings and rounded boxed tables.
-* **Session Persistence (`redis_client.py`):**
-  * Automatically records completed task sessions to Redis with relative elapsed timestamps (`just now`, `15m ago`, `2h ago`).
 
 ---
 
@@ -163,12 +167,12 @@ QueryNest includes a framed terminal CLI built on **Prompt Toolkit** and **Rich*
 | Command | Description |
 | :--- | :--- |
 | `/help` | Opens the interactive command picker with arrow-key navigation and prompt pre-fill. |
-| `/sessions` / `/session` | Opens the interactive session picker displaying previous tasks and relative elapsed time. |
-| `/session clear` | Clears all stored session records from Redis. |
-| `/model` | Displays the currently active LLM provider and model ID. |
-| `/model gemini` | Switches active model to **Google Gemini 2.0 Flash**. |
-| `/model groq` | Switches active model to **Groq GPT-OSS 120B**. |
-| `/tools` | Lists all 8 registered tools and their functional signatures. |
+| `/sessions` / `/session` | Lists past conversation threads stored in Redis; selecting one restores its active chat state. |
+| `/session clear` | Clears all stored session threads from Redis and local cache. |
+| `/new` | Starts a fresh multi-turn conversation session. |
+| `/model` | Interactively inspects or switches the active AI model. |
+| `/mode` | Toggles execution mode (`normal` safe permission gate vs `accept-edits` auto-execution). |
+| `/tools` | Lists all 13 registered tools and their functional signatures. |
 | `/history` | Displays task history for the current terminal session. |
 | `/clear` | Clears the terminal screen. |
 | `/exit` / `/quit` | Gracefully closes QueryNest. |

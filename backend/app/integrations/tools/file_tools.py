@@ -190,3 +190,136 @@ def delete_file(file_path: str) -> str:
         return f"Error deleting file '{file_path}': {str(e)}"
 
 
+@tool
+def search_code(query: str, path: str = ".", file_pattern: str = "*", max_results: int = 30) -> str:
+    """
+    Searches for functions, classes, variables, or text patterns across project files (Grep search).
+    Use this tool to locate code symbols, find import usages, or trace function definitions quickly without reading whole files.
+
+    Args:
+        query: String or regex to search for (e.g. 'def execute_workflow' or 'REDIS_CACHE').
+        path: Directory or file to search within (defaults to '.' for entire workspace).
+        file_pattern: File extension filter (e.g. '*.py', '*.ts', '*.json', or '*' for all).
+        max_results: Maximum matching lines to return (default 30).
+
+    Returns:
+        Formatted list of matching file paths, line numbers, and matching lines.
+    """
+    import fnmatch
+    import re
+
+    try:
+        clean_query = query.strip()
+        if not clean_query:
+            return "Error: Search query cannot be empty."
+
+        target_base = _resolve_safe_path(path)
+        if not target_base.exists():
+            return f"Error: Path '{path}' does not exist."
+
+        matches = []
+        try:
+            pattern = re.compile(clean_query, re.IGNORECASE)
+        except Exception:
+            pattern = re.compile(re.escape(clean_query), re.IGNORECASE)
+
+        files_to_scan = []
+        if target_base.is_file():
+            files_to_scan.append(target_base)
+        else:
+            for root_dir, dirs, files in os.walk(target_base):
+                dirs[:] = [d for d in dirs if d not in IGNORE_DIRS]
+                for f in files:
+                    if fnmatch.fnmatch(f, file_pattern):
+                        files_to_scan.append(Path(root_dir) / f)
+
+        for file_path in files_to_scan:
+            try:
+                content = file_path.read_text(encoding="utf-8", errors="ignore")
+                rel_path = file_path.relative_to(settings.WORKSPACE_ROOT).as_posix()
+                lines = content.splitlines()
+
+                for idx, line in enumerate(lines, 1):
+                    if pattern.search(line):
+                        trimmed_line = line.strip()
+                        if len(trimmed_line) > 120:
+                            trimmed_line = trimmed_line[:117] + "..."
+                        matches.append(f"{rel_path}:{idx}  {trimmed_line}")
+                        if len(matches) >= max_results:
+                            break
+                if len(matches) >= max_results:
+                    break
+            except Exception:
+                continue
+
+        if not matches:
+            return f"No matches found for '{query}' in '{path}' (filter: {file_pattern})."
+
+        header = f"Found {len(matches)} match(es) for '{query}':\n"
+        return header + "\n".join(matches)
+
+    except Exception as e:
+        return f"Error searching code for '{query}': {str(e)}"
+
+
+@tool
+def patch_file(file_path: str, target_content: str, replacement_content: str) -> str:
+    """
+    Surgically replaces a specific block of code inside an existing file without rewriting the whole file.
+    Use this tool for precise bug fixes, refactoring specific functions, or adding imports.
+
+    Args:
+        file_path: Relative path to the file to modify.
+        target_content: The exact snippet of lines to find and replace.
+        replacement_content: The new snippet of lines to put in place of target_content.
+
+    Returns:
+        Confirmation message with diff verification.
+    """
+    try:
+        target_file = _resolve_safe_path(file_path)
+
+        if not target_file.exists() or not target_file.is_file():
+            return f"Error: File '{file_path}' does not exist or is not a file."
+
+        original_text = target_file.read_text(encoding="utf-8", errors="replace")
+
+        # Normalize line endings
+        norm_orig = original_text.replace("\r\n", "\n")
+        norm_target = target_content.replace("\r\n", "\n")
+        norm_replacement = replacement_content.replace("\r\n", "\n")
+
+        count = norm_orig.count(norm_target)
+        if count == 0:
+            return f"Error: Target snippet was not found in '{file_path}'. Make sure whitespace and indentation match exactly."
+        elif count > 1:
+            return f"Error: Target snippet appears {count} times in '{file_path}'. Please include more surrounding context to make the target unique."
+
+        new_text = norm_orig.replace(norm_target, norm_replacement, 1)
+
+        # Print rich diff
+        try:
+            diff = list(difflib.unified_diff(
+                norm_orig.splitlines(keepends=True),
+                new_text.splitlines(keepends=True),
+                fromfile=f"a/{file_path}",
+                tofile=f"b/{file_path}",
+                lineterm="",
+            ))
+            if diff:
+                diff_text = "\n".join(line.rstrip("\r\n") for line in diff)
+                diff_syntax = Syntax(diff_text, "diff", theme="ansi_dark", line_numbers=False)
+                diff_console.print()
+                diff_console.print(diff_syntax)
+                diff_console.print()
+        except Exception:
+            pass
+
+        target_file.write_text(new_text, encoding="utf-8")
+        return f"Successfully patched '{file_path}'."
+
+    except Exception as e:
+        return f"Error patching file '{file_path}': {str(e)}"
+
+
+

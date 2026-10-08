@@ -87,6 +87,15 @@ def _extract_image_payload(args: Dict[str, Any]) -> str:
     return _format_full_path(raw_path)
 
 
+def _extract_image_gen_payload(args: Dict[str, Any]) -> str:
+    """Extracts output path or prompt summary for image generation."""
+    out_p = args.get("output_path", "")
+    if out_p:
+        return _format_full_path(out_p)
+    prompt = args.get("prompt", "")
+    return f"'{prompt[:40]}...'" if len(prompt) > 40 else f"'{prompt}'"
+
+
 # Tools that only display dynamic shimmers and never print permanent badges
 SHIMMER_ONLY_TOOLS = {"list_directory", "search_web"}
 
@@ -94,10 +103,14 @@ SHIMMER_ONLY_TOOLS = {"list_directory", "search_web"}
 TOOL_BADGE_REGISTRY: Dict[str, Tuple[str, Any]] = {
     "read_file": ("Read", _extract_path_payload),
     "write_file": ("Write", _extract_path_payload),
+    "patch_file": ("Patch", _extract_path_payload),
     "delete_file": ("Delete", _extract_path_payload),
     "run_git_command": ("Git", _extract_git_payload),
     "run_terminal_command": ("Bash", _extract_bash_payload),
     "inspect_image": ("Vision", _extract_image_payload),
+    "generate_image": ("Image", _extract_image_gen_payload),
+    "search_code": ("Search", lambda args: f"grep \"{args.get('query', '')}\""),
+    "read_doc_url": ("Fetch", lambda args: str(args.get("url", ""))),
 }
 
 
