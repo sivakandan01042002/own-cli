@@ -258,6 +258,7 @@ def summarizer_node(state: CodingAgentState) -> Dict[str, Any]:
     claimed_files = list(state.get("modified_files", []))
     is_code_modified = bool(claimed_files)
     all_modified = list(claimed_files)
+    actual_git_files = []
 
     if is_code_modified:
         actual_git_files = get_actual_git_modified_files(workspace_root)
@@ -269,6 +270,7 @@ def summarizer_node(state: CodingAgentState) -> Dict[str, Any]:
         # Read-only Q&A or inquiry: do not carry over unexecuted test status
         test_results = ""
         test_passed = True
+
 
     summary_prompt = build_summarizer_prompt(
         task=task,

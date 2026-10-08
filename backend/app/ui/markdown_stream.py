@@ -68,13 +68,28 @@ def stream_live_markdown(
     """
     Reusable UI Component:
     Streams text tokens in real time while rendering formatted Rich Markdown with full rounded tables.
-    Accumulates and returns the full generated text for state and session storage.
+    Keeps shimmer animation active until the first network token arrives, eliminating dead screen gaps.
     """
     from app.ui.shimmer import ShimmerLoader
-    ShimmerLoader.stop_active()
 
     console = console or Console(theme=RICH_THEME)
-    accumulated_text = ""
+    token_iter = iter(token_stream)
+
+    # Pull first non-empty token while shimmer is actively running
+    first_token = ""
+    try:
+        for token in token_iter:
+            if token:
+                first_token = token
+                break
+    finally:
+        # Stop shimmer only once the first token has arrived or stream ends
+        ShimmerLoader.stop_active()
+
+    if not first_token:
+        return ""
+
+    accumulated_text = first_token
 
     with Live(
         Markdown(accumulated_text),
@@ -82,9 +97,10 @@ def stream_live_markdown(
         refresh_per_second=refresh_per_second,
         transient=False,
     ) as live:
-        for token in token_stream:
+        for token in token_iter:
             if token:
                 accumulated_text += token
                 live.update(Markdown(accumulated_text))
 
     return accumulated_text
+
