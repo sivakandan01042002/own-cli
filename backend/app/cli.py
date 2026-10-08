@@ -49,10 +49,11 @@ def _generate_session_id() -> str:
 @app.command()
 def chat():
     """Starts the interactive QueryNest CLI session with multi-turn memory."""
-    print_banner()
     ensure_workspace_trusted_gate()
+    print_banner()
 
     session = FramedPromptSession(
+
         completer=SlashCommandCompleter(),
         style=CLI_STYLE,
     )
@@ -135,9 +136,10 @@ def run(
     test_path: Optional[str] = typer.Option(None, "--test-path", "-t", help="Specific pytest path to target"),
 ):
     """Executes a single coding task from the command line and exits."""
-    print_banner()
     ensure_workspace_trusted_gate()
+    print_banner()
     category, payload = triage_user_input(task)
+
     if category == "task":
         execute_workflow(payload, test_path=test_path, interactive=False)
     else:

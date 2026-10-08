@@ -1,7 +1,8 @@
 """Interactive arrow-key navigation menu picker using Prompt Toolkit."""
 import shutil
 import sys
-from typing import List, Optional, Tuple
+from typing import List, Optional, Tuple, Any, Union
+
 
 from prompt_toolkit.application import Application
 from prompt_toolkit.data_structures import Size
@@ -38,13 +39,17 @@ MENU_STYLE = Style.from_dict({
     "inactive-pointer": "",
     "inactive-label": "fg:#cccccc",
     "inactive-desc": "dim #777777",
+    "ws-path": "bold #00d4ff",
+    "ws-title": "fg:#ffffff",
+    "ws-desc": "fg:#d0d0d0",
 })
 
 
 def show_interactive_menu(
     items: List[Tuple[str, str, str]],  # (return_value, label, description)
     instruction: str = "Use ↑/↓ to navigate, Enter to select, Esc to cancel",
-    title: str = "",
+    title: Any = "",
+    indent_pointer: bool = True,
 ) -> Optional[str]:
     """
     Renders an interactive terminal menu with up/down arrow navigation.
@@ -59,12 +64,18 @@ def show_interactive_menu(
 
     selected_index = [0]  # list for closure mutation
 
+    ptr_active = "  > " if indent_pointer else "> "
+    ptr_inactive = "    " if indent_pointer else "  "
+
     def get_formatted_text() -> StyleAndTextTuples:
         lines: StyleAndTextTuples = []
 
         if title:
             lines.append(("", "\n"))
-            lines.append(("class:menu-title", f"{title}\n"))
+            if isinstance(title, list):
+                lines.extend(title)
+            else:
+                lines.append(("class:menu-title", f"{title}\n"))
 
         term_width = shutil.get_terminal_size((80, 24)).columns
 
@@ -76,7 +87,7 @@ def show_interactive_menu(
                 pointer_class = "class:active-pointer" if is_active else "class:inactive-pointer"
                 label_class = "class:active-label" if is_active else "class:inactive-label"
                 desc_class = "class:active-desc" if is_active else "class:inactive-desc"
-                pointer_str = "  > " if is_active else "    "
+                pointer_str = ptr_active if is_active else ptr_inactive
 
                 lines.append((pointer_class, pointer_str))
                 lines.append((label_class, f"{label} "))
@@ -94,12 +105,12 @@ def show_interactive_menu(
                     space_count = max(2, term_width - 6 - len(clean_label) - len(desc or ""))
                     spacing = " " * space_count
                     if is_active:
-                        lines.append(("class:active-pointer", "  > "))
+                        lines.append(("class:active-pointer", ptr_active))
                         lines.append(("class:active-label", clean_label))
                         lines.append(("", spacing))
                         lines.append(("class:active-desc", f"{desc}\n"))
                     else:
-                        lines.append(("class:inactive-pointer", "    "))
+                        lines.append(("class:inactive-pointer", ptr_inactive))
                         lines.append(("class:inactive-label", clean_label))
                         lines.append(("", spacing))
                         lines.append(("class:inactive-desc", f"{desc}\n"))
@@ -109,13 +120,14 @@ def show_interactive_menu(
                 for idx, (val, label, desc) in enumerate(items):
                     is_active = idx == selected_index[0]
                     if is_active:
-                        lines.append(("class:active-pointer", "  > "))
+                        lines.append(("class:active-pointer", ptr_active))
                         lines.append(("class:active-label", f"{label:<{pad}}"))
                         lines.append(("class:active-desc", f"{desc}\n"))
                     else:
-                        lines.append(("class:inactive-pointer", "    "))
+                        lines.append(("class:inactive-pointer", ptr_inactive))
                         lines.append(("class:inactive-label", f"{label:<{pad}}"))
                         lines.append(("class:inactive-desc", f"{desc}\n"))
+
 
         if instruction:
             lines.append(("", "\n"))

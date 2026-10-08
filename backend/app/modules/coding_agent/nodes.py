@@ -254,17 +254,21 @@ def summarizer_node(state: CodingAgentState) -> Dict[str, Any]:
     if not findings_summary and coder_findings:
         findings_summary = "\n\n".join(coder_findings)
 
-    # Reconcile agent claimed files with actual disk/git modifications
+    # Only reconcile with git if this task actually performed code modifications
     claimed_files = list(state.get("modified_files", []))
-    actual_git_files = get_actual_git_modified_files(workspace_root)
-    
-    # Merge and deduplicate
+    is_code_modified = bool(claimed_files)
     all_modified = list(claimed_files)
-    for af in actual_git_files:
-        if af not in all_modified:
-            all_modified.append(af)
 
-    is_code_modified = bool(all_modified)
+    if is_code_modified:
+        actual_git_files = get_actual_git_modified_files(workspace_root)
+        for af in actual_git_files:
+            if af in claimed_files or any(af.endswith(cf) or cf.endswith(af) for cf in claimed_files):
+                if af not in all_modified:
+                    all_modified.append(af)
+    else:
+        # Read-only Q&A or inquiry: do not carry over unexecuted test status
+        test_results = ""
+        test_passed = True
 
     summary_prompt = build_summarizer_prompt(
         task=task,
@@ -275,6 +279,7 @@ def summarizer_node(state: CodingAgentState) -> Dict[str, Any]:
         test_results=test_results,
         is_code_modified=is_code_modified,
     )
+
 
     messages = [
         SystemMessage(content=SUMMARIZER_SYSTEM_PROMPT),
