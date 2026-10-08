@@ -158,44 +158,56 @@ def handle_mode(args: str = "") -> Optional[str]:
     return None
 
 
+def handle_new(args: str = "") -> str:
+    """Starts a clean new multi-turn conversation session."""
+    return "__new_session__"
+
+
 def handle_sessions(args: str = "") -> Optional[str]:
-    """Displays past coding sessions stored in Redis. Selecting any session restores it into the active prompt."""
+    """Displays past session threads stored in Redis. Selecting any thread restores its full conversation memory."""
     from app.ui.menu import show_interactive_menu
+    from app.core.redis_client import list_session_threads, clear_session_records
+
     arg_clean = args.strip().lower()
     if arg_clean == "clear":
         clear_session_records()
-        console.print("\n[bold yellow]Session records cleared from Redis.[/bold yellow]\n")
+        console.print("[bold yellow]Session records and threads cleared.[/bold yellow]")
         return None
 
-    limit = 6
+    limit = 10
     if arg_clean == "all":
         limit = 50
     elif arg_clean.isdigit():
         limit = min(int(arg_clean), 50)
 
-    sessions = get_session_records(limit=limit)
-    if not sessions:
-        console.print("\n[dim]No recent session records found in Redis.[/dim]\n")
+    threads = list_session_threads(limit=limit)
+    if not threads:
+        console.print("[dim]No past session threads found.[/dim]")
         return None
 
     menu_items = []
-    for s in sessions:
-        task_str = s.get("task", "").strip().replace("\n", " ")
-        ts = s.get("created_at") or s.get("timestamp") or s.get("time")
-        rel_time = format_relative_time(ts)
-        menu_items.append((task_str, task_str, rel_time))
+    for t in threads:
+        sid = t.get("session_id", "")
+        title = t.get("title", "Untitled Session").strip().replace("\n", " ")
+        turn_count = t.get("turn_count", len(t.get("messages", [])) // 2 or 1)
+        turn_label = f"{turn_count} turns" if turn_count != 1 else "1 turn"
+        ts = t.get("updated_at") or t.get("created_at")
+        rel_time = f"{turn_label} · {format_relative_time(ts)}"
+        menu_items.append((sid, title, rel_time))
 
-    selected = show_interactive_menu(
+    selected_sid = show_interactive_menu(
         items=menu_items,
         instruction="Use ↑/↓ to navigate, Enter to restore, Esc to cancel",
     )
-    return selected
+    if selected_sid:
+        return f"__restore_session__:{selected_sid}"
+    return None
 
 
 
 def handle_tools(args: str = "") -> Optional[str]:
     """Inspects all registered tools."""
-    console.print(f"\n[bold green]🛠️  Registered Agent Tools ({len(ALL_TOOLS)})[/bold green]\n")
+    console.print(f"\n[bold green]Registered Agent Tools ({len(ALL_TOOLS)})[/bold green]\n")
     for t in ALL_TOOLS:
         desc = t.description.strip().splitlines()[0] if t.description else "No description"
         console.print(f"  • [bold cyan]{t.name:<22}[/] [dim]{desc}[/dim]")
@@ -206,9 +218,9 @@ def handle_tools(args: str = "") -> Optional[str]:
 def handle_history(args: str = "") -> Optional[str]:
     """Displays tasks executed in the current session."""
     if not task_history:
-        console.print("\n[dim]No tasks executed in this live session yet.[/dim]\n")
+        console.print("[dim]No tasks executed in this live session yet.[/dim]")
         return None
-    console.print(f"\n[bold magenta]📜 Current Session Tasks ({len(task_history)})[/bold magenta]\n")
+    console.print(f"\n[bold magenta]Current Session Tasks ({len(task_history)})[/bold magenta]\n")
     for idx, task in enumerate(task_history, 1):
         console.print(f"  {idx}. [white]{task}[/white]")
     console.print()
@@ -220,6 +232,7 @@ COMMAND_DISPATCHER = {
     "/help": handle_help,
     "/model": handle_model,
     "/mode": handle_mode,
+    "/new": handle_new,
     "/session": handle_sessions,
     "/sessions": handle_sessions,
     "/tools": handle_tools,
@@ -231,7 +244,7 @@ COMMAND_DISPATCHER = {
 
 
 def dispatch_command(user_input: str) -> Optional[str]:
-    """Parses and executes a slash command. Returns prefill text if an item was selected."""
+    """Parses and executes a slash command. Returns prefill text or action code."""
     parts = user_input.strip().split(maxsplit=1)
     if not parts:
         return None
@@ -243,6 +256,6 @@ def dispatch_command(user_input: str) -> Optional[str]:
     if handler:
         return handler(args)
 
-    console.print(f"\n[bold red]Unknown command:[/] {cmd}. Type [bold cyan]/help[/bold cyan] for available commands.\n")
+    console.print(f"[bold red]Unknown command:[/] {cmd}. Type [bold cyan]/help[/bold cyan] for available commands.")
     return None
 

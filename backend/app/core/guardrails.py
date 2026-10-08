@@ -1,18 +1,16 @@
 import re
-from typing import Tuple, Literal, Optional, Dict, List
+from typing import Tuple, Literal, Optional, Dict, List, Any
 
 
 # Strict regex patterns for standalone greetings and pleasantries
 PURE_GREETING_PATTERNS = [
     r"^(hi|hello|hey|howdy|greetings|sup|yo)(\s+(there|querynest|bot|assistant|friend|everyone))?[\s!.]*$",
-    r"^(who\s+are\s+you|what\s+can\s+you\s+do|what\s+is\s+your\s+name)[\s?!.]*$",
     r"^good\s+(morning|afternoon|evening|day)[\s!.]*$",
-    r"^(great|awesome|cool|nice|perfect|good|ok|okay|sounds good|thanks|thank you|thx|cheers|got it|understood|all good)[\s,!.]*(\s*(thanks|thank you|querynest|bro))?[\s!.]*$",
-    r"^help[\s!.]*$",
 ]
 
 ACKNOWLEDGMENT_PATTERNS = [
-    r"^(great|awesome|cool|nice|perfect|good|ok|okay|sounds good|thanks|thank you|thx|cheers|got it|understood|all good)[\s,!.]*(\s*(thanks|thank you|querynest|bro))?[\s!.]*$",
+    r"^(thanks|thank you|thx|cheers|got it|understood|all good)[\s,!.]*(\s*(thanks|thank you|querynest|bro))?[\s!.]*$",
+    r"^(ok|okay|sounds good)[\s,!.]*$",
 ]
 
 # Conversational prefix stripper (e.g. "Hi, ...", "Hey QueryNest, ...")
@@ -34,8 +32,6 @@ BLOCKED_PATTERNS = [
     r"del\s+/f\s+/s\s+/q",
     r"drop\s+database",
     r":\(\)\s*\{\s*:\s*\|\s*:\s*&\s*\}\s*;",
-    # Inappropriate / NSFW
-    r"\b(sex|porn|nude|nsfw|xxx)\b",
 ]
 
 # Technical indicators that strongly signal a coding task/question
@@ -47,8 +43,6 @@ TECHNICAL_KEYWORDS = {
     "docker", "database", "schema", "table", "crud", "query", "route", "git",
 }
 
-
-# Action verbs indicating a substantive coding or developer request
 ACTION_VERBS = {
     "build", "create", "make", "fix", "debug", "add", "update", "modify",
     "change", "delete", "remove", "write", "test", "run", "execute", "install",
@@ -57,95 +51,25 @@ ACTION_VERBS = {
     "format", "lint", "deploy", "setup", "start", "stop", "restart",
 }
 
-# Inquisitive question triggers
 QUESTION_WORDS = {"why", "how", "what", "where", "who", "when", "which"}
-
-# Evaluative praise and sentiment expressions
-PRAISE_WORDS = {
-    "great", "awesome", "impressive", "amazing", "wonderful", "fantastic",
-    "super", "superb", "cool", "nice", "perfect", "good", "love", "neat",
-    "slick", "clean", "works", "worked", "helpful", "thanks", "thank",
-    "appreciated", "appreciate", "brilliant", "excellent", "well", "done",
-    "job", "work", "fine", "cheers", "thx",
-}
 
 
 def is_acknowledgment_or_pleasantry(text: str) -> bool:
-    """
-    Semantically checks if input is an evaluative praise, conversational pleasantry, or greeting
-    by analyzing action verbs, technical code targets, and sentiment intent.
-    """
-    clean = re.sub(r"[^\w\s]", " ", text.lower()).strip()
-    words = clean.split()
-    if not words:
-        return True
-
-    has_praise = any(w in PRAISE_WORDS for w in words)
-    has_action = any(w in ACTION_VERBS for w in words)
-    has_question = any(w in QUESTION_WORDS for w in words)
-    has_code_entity = bool(re.search(r"\b\w+\.(py|js|ts|tsx|jsx|json|md|yaml|yml|html|css|sh|bat|txt|sql)\b", text.lower())) or bool(re.search(r"[/\\]\w+", text))
-
-    # If it contains praise and has no actionable code entity or imperative action
-    if has_praise and not (has_action or has_question or has_code_entity):
-        return True
-
-    # If phrase is short evaluative praise without technical targets (e.g. 'great work thanks', 'worked well')
-    if has_praise and len(words) <= 6 and not has_code_entity and not has_question:
-        if not (has_action and any(w in {"file", "code", "repo", "bug", "test", "api", "branch", "commit"} for w in words)):
+    """Checks if input is strictly a short standalone acknowledgment like 'thanks' or 'thank you'."""
+    clean = text.strip().lower()
+    for pattern in ACKNOWLEDGMENT_PATTERNS:
+        if re.match(pattern, clean):
             return True
-
     return False
 
 
-def calculate_intent_scores(text: str) -> Dict[str, float]:
-    """
-    JEV-style Calibrated Intent Analysis:
-    Calculates weighted confidence percentages for 'greeting' vs 'task'
-    using semantic action-verb and technical entity analysis.
-    """
-    cleaned = text.strip().lower()
-    words = re.findall(r"\b\w+(?:\.\w+)?\b", cleaned)
-    total_words = len(words)
-
-    if total_words == 0:
-        return {"greeting": 1.0, "task": 0.0}
-
-    # 1. Semantic praise / pleasantry check
-    if is_acknowledgment_or_pleasantry(text):
-        return {"greeting": 0.99, "task": 0.01}
-
-    for pattern in PURE_GREETING_PATTERNS:
-        if re.match(pattern, cleaned):
-            return {"greeting": 0.99, "task": 0.01}
-
-    # 2. Count technical / actionable words
-    tech_count = sum(1 for w in words if w in TECHNICAL_KEYWORDS or w in ACTION_VERBS)
-    has_code_entity = bool(re.search(r"\b\w+\.(py|js|ts|tsx|jsx|json|md|yaml|yml|html|css|sh|bat|txt|sql)\b", cleaned)) or bool(re.search(r"[/\\]\w+", cleaned))
-    if has_code_entity:
-        tech_count += 3
-
-    question_marks = text.count("?")
-
-    # 3. Calculate calibrated ratios
-    greeting_prefix_match = CONVERSATIONAL_PREFIX_REGEX.match(cleaned)
-    greeting_prefix_len = len(greeting_prefix_match.group(0).split()) if greeting_prefix_match else 0
-
-    actionable_words = total_words - greeting_prefix_len
-    task_ratio = (actionable_words + (tech_count * 2) + (question_marks * 2)) / (total_words + 2)
-
-    task_confidence = min(0.99, max(0.01, task_ratio))
-    greeting_confidence = 1.0 - task_confidence
-
-    return {
-        "greeting": round(greeting_confidence, 2),
-        "task": round(task_confidence, 2),
-    }
-
-
 def is_pure_greeting(text: str) -> bool:
-    """Checks if input is strictly a casual greeting with no technical inquiry."""
-    scores = calculate_intent_scores(text)
-    return scores["greeting"] > 0.70
+    """Checks if input is strictly a casual standalone greeting."""
+    clean = text.strip().lower()
+    for pattern in PURE_GREETING_PATTERNS:
+        if re.match(pattern, clean):
+            return True
+    return False
 
 
 def get_greeting_response(text: str = "") -> str:
@@ -234,6 +158,105 @@ def extract_prompt_images(text: str) -> Tuple[str, List[str]]:
     return cleaned_prompt, found_paths
 
 
+def extract_prompt_files(text: str) -> Tuple[str, List[Dict[str, Any]]]:
+    """
+    Extracts @file and @folder references from prompt text and safely reads their contents.
+    Resolves both exact relative paths and workspace basenames (e.g. @cli.py -> backend/app/cli.py).
+    Excludes @image tags (handled by extract_prompt_images).
+    """
+    from app.core.config import settings
+    from pathlib import Path
+
+    IGNORE_DIRS = {
+        ".git",
+        "__pycache__",
+        ".pytest_cache",
+        ".venv",
+        "venv",
+        "node_modules",
+        ".vscode",
+        ".idea",
+        ".querynest_cache",
+    }
+
+    pinned_files: List[Dict[str, Any]] = []
+    root = settings.WORKSPACE_ROOT.resolve()
+
+    # Find candidate @tags
+    candidates = re.findall(r"@([^\s\"',]+)", text)
+    seen_paths = set()
+
+    for cand in candidates:
+        cand_clean = cand.strip("\"'").rstrip("?.!,;:)`")
+        if not cand_clean or cand_clean.lower().startswith("image"):
+            continue
+
+        target_path: Optional[Path] = None
+
+        # 1. Direct path check
+        try:
+            direct = (root / cand_clean).resolve()
+            if str(direct).startswith(str(root)) and direct.exists():
+                target_path = direct
+        except Exception:
+            pass
+
+        # 2. Workspace search by basename or relative suffix
+        if not target_path:
+            try:
+                for p in root.rglob("*"):
+                    if any(part in IGNORE_DIRS for part in p.parts):
+                        continue
+                    rel = p.relative_to(root)
+                    rel_str = str(rel).replace("\\", "/")
+                    if (
+                        p.name.lower() == cand_clean.lower()
+                        or p.name.lower() == f"{cand_clean}.py".lower()
+                        or rel_str.lower().endswith(cand_clean.lower())
+                    ):
+                        target_path = p
+                        break
+            except Exception:
+                pass
+
+        if not target_path or not target_path.exists():
+            continue
+
+        try:
+            rel_path = target_path.relative_to(root)
+            rel_path_str = str(rel_path).replace("\\", "/")
+            if rel_path_str in seen_paths:
+                continue
+            seen_paths.add(rel_path_str)
+
+            if target_path.is_file():
+                content = target_path.read_text(encoding="utf-8", errors="replace")
+                # Limit very large files to first 500 lines to prevent token blowup
+                lines = content.splitlines()
+                if len(lines) > 500:
+                    content = "\n".join(lines[:500]) + f"\n... (truncated, total {len(lines)} lines)"
+                pinned_files.append({
+                    "path": rel_path_str,
+                    "type": "file",
+                    "content": content,
+                })
+            elif target_path.is_dir():
+                entries = [
+                    f"📄 {p.relative_to(root)}"
+                    for p in target_path.rglob("*")
+                    if p.is_file() and not any(part in IGNORE_DIRS for part in p.parts)
+                ]
+                pinned_files.append({
+                    "path": rel_path_str,
+                    "type": "directory",
+                    "content": "\n".join(entries[:60]),
+                })
+        except Exception:
+            continue
+
+    return text, pinned_files
+
+
 def triage_user_input(text: str) -> Tuple[Literal["command", "greeting", "unsafe", "task"], str]:
     """
     Classifies user input using calibrated percentage confidence:
@@ -257,11 +280,11 @@ def triage_user_input(text: str) -> Tuple[Literal["command", "greeting", "unsafe
     if safety_error:
         return "unsafe", safety_error
 
-    scores = calculate_intent_scores(trimmed)
+    if is_acknowledgment_or_pleasantry(trimmed):
+        return "greeting", "[white]You're very welcome! Let me know if you need anything else.[/white]"
 
-    # Pure greeting / pleasantry with no substantive task
-    if scores["greeting"] > 0.70:
-        return "greeting", get_greeting_response(trimmed)
+    if is_pure_greeting(trimmed):
+        return "greeting", "[white]👋 [bold]Hi! I'm QueryNest[/bold] — your multi-agent coding assistant. Type a task or [bold cyan]/help[/bold cyan] for commands.[/white]"
 
     # Extract clean task by stripping conversational prefix if present
     cleaned_task = CONVERSATIONAL_PREFIX_REGEX.sub("", trimmed).strip()

@@ -30,22 +30,33 @@ from app.ui import (
     print_banner,
 )
 
+import uuid
+from datetime import datetime
+from app.core.redis_client import get_session_thread, deserialize_message
+
 # CLI Application & Console Setup
 app = typer.Typer(help="QueryNest Multi-Agent Coding CLI", add_completion=False)
 console = Console(theme=RICH_THEME)
 
 
+def _generate_session_id() -> str:
+    """Generates a clean timestamped session ID."""
+    return f"sess_{datetime.now().strftime('%Y%m%d_%H%M%S')}_{uuid.uuid4().hex[:6]}"
+
 
 @app.command()
 def chat():
-    """Starts the interactive QueryNest CLI session."""
+    """Starts the interactive QueryNest CLI session with multi-turn memory."""
     print_banner()
     session = FramedPromptSession(
         completer=SlashCommandCompleter(),
         style=CLI_STYLE,
     )
 
+    current_session_id = _generate_session_id()
+    current_session_messages = []
     prefill_text = ""
+
     while True:
         try:
             user_input = session.prompt(default=prefill_text)
@@ -59,15 +70,55 @@ def chat():
             category, payload = triage_user_input(user_input)
 
             if category == "command":
-                selected = dispatch_command(payload)
-                if selected:
-                    prefill_text = selected
+                action = dispatch_command(payload)
+                if action == "__new_session__":
+                    current_session_id = _generate_session_id()
+                    current_session_messages = []
+                    console.print("[bold green]Started a new conversation session.[/bold green]")
+                elif action and action.startswith("__restore_session__:"):
+                    target_sid = action.split(":", 1)[1]
+                    thread_data = get_session_thread(target_sid)
+                    if thread_data:
+                        current_session_id = target_sid
+                        raw_msgs = thread_data.get("messages", [])
+                        current_session_messages = [deserialize_message(m) for m in raw_msgs]
+                        from rich.markdown import Markdown
+                        cols = console.size.width or 80
+                        divider = "─" * min(cols, 100)
+                        for m in current_session_messages:
+                            m_type = getattr(m, "type", "")
+                            m_cls = m.__class__.__name__
+                            if m_type == "human" or m_cls == "HumanMessage":
+                                raw_c = m.content if isinstance(m.content, str) else str(m.content)
+                                if "User Task:\n" in raw_c:
+                                    clean_c = raw_c.split("User Task:\n")[-1].strip()
+                                elif "User Task:" in raw_c:
+                                    clean_c = raw_c.split("User Task:")[-1].strip()
+                                else:
+                                    clean_c = raw_c.strip()
+                                console.print(f"[#404040]{divider}[/#404040]")
+                                console.print(f"[bold #0099ff]❯[/] [white]{clean_c}[/white]")
+                                console.print(f"[#404040]{divider}[/#404040]")
+                            elif m_type == "ai" or m_cls == "AIMessage":
+                                raw_c = m.content if isinstance(m.content, str) else str(m.content)
+                                if raw_c.strip():
+                                    console.print(Markdown(raw_c.strip()))
+                                    console.print()
+                elif action:
+                    prefill_text = action
             elif category == "greeting":
                 console.print(f"{payload}")
             elif category == "unsafe":
-                console.print(f"[bold red]⚠️ Safety Guardrail:[/] {payload}")
+                console.print(f"[bold red]Safety Guardrail:[/] {payload}")
             elif category == "task":
-                execute_workflow(payload, interactive=True)
+                result_messages = execute_workflow(
+                    payload,
+                    interactive=True,
+                    session_id=current_session_id,
+                    history_messages=current_session_messages,
+                )
+                if result_messages:
+                    current_session_messages = result_messages
 
         except (KeyboardInterrupt, EOFError):
             break

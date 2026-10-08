@@ -8,7 +8,7 @@ from langchain_core.messages import HumanMessage
 import app.ui.markdown_stream  # Ensures boxed rounded tables are registered globally
 from app.core.config import settings
 from app.core.exceptions import format_error_for_user
-from app.core.redis_client import save_session_record
+from app.core.redis_client import save_session_thread
 from app.core.theme import (
     create_banner_panel,
     print_planner_header,
@@ -65,17 +65,24 @@ def _get_shimmer_message_for_tool(name: str, args: Dict[str, Any]) -> str:
     return "Executing action..."
 
 
-def execute_workflow(task: str, test_path: Optional[str] = None, interactive: bool = True):
+def execute_workflow(
+    task: str,
+    test_path: Optional[str] = None,
+    interactive: bool = True,
+    session_id: Optional[str] = None,
+    history_messages: Optional[List[Any]] = None,
+) -> List[Any]:
     """
     Executes the multi-agent graph stream with green animated shimmer text,
     renders live badges upon completion of each tool, streams LLM markdown responses token-by-token,
-    and automatically persists sessions to Redis.
+    and automatically persists threaded sessions to Redis.
     """
     from app.modules.coding_agent.graph import coding_agent_app
     from app.modules.coding_agent.commands import record_task_in_history
-    from app.core.guardrails import extract_prompt_images
+    from app.core.guardrails import extract_prompt_images, extract_prompt_files
     from app.integrations.tools.image_tools import _resolve_safe_image_path, _optimize_and_encode_image
-    from app.core.user_config import get_active_mode
+    from app.core.user_config import get_active_mode, get_active_model_name, get_active_provider
+    from app.core.redis_client import save_session_thread
 
     session_auto_accept = (get_active_mode() in ("accept-edits", "auto"))
 
@@ -85,6 +92,16 @@ def execute_workflow(task: str, test_path: Optional[str] = None, interactive: bo
         repo_tree = "Unable to retrieve repository file listing."
 
     clean_task, image_paths = extract_prompt_images(task)
+    clean_task, pinned_files = extract_prompt_files(clean_task)
+
+    pinned_context_str = ""
+    if pinned_files:
+        sections = []
+        for pf in pinned_files:
+            console.print(f"[bold green]Pinned context:[/] [dim]{pf['path']}[/dim]")
+            sections.append(f"--- Pinned {pf['type'].capitalize()}: {pf['path']} ---\n{pf['content']}")
+        pinned_context_str = "\n\n" + "\n\n".join(sections)
+
     attached_images_payload = []
     
     if image_paths:
@@ -106,7 +123,7 @@ def execute_workflow(task: str, test_path: Optional[str] = None, interactive: bo
         image_summaries = ", ".join([f"{img['filename']} ({img['meta']['original_dimensions']})" for img in attached_images_payload])
         text_content = (
             f"Workspace Root: {settings.WORKSPACE_ROOT}\n\n"
-            f"User Task:\n{clean_task}\n\n"
+            f"User Task:\n{clean_task}{pinned_context_str}\n\n"
             f"[Attached Image(s): {image_summaries}]"
         )
         msg_parts = [{"type": "text", "text": text_content}]
@@ -115,19 +132,23 @@ def execute_workflow(task: str, test_path: Optional[str] = None, interactive: bo
                 "type": "image_url",
                 "image_url": img["image_url"],
             })
-        initial_human_msg = HumanMessage(content=msg_parts)
+        current_human_msg = HumanMessage(content=msg_parts)
     else:
-        initial_human_msg = HumanMessage(
+        current_human_msg = HumanMessage(
             content=(
                 f"Workspace Root: {settings.WORKSPACE_ROOT}\n\n"
                 f"Repository Structure:\n{repo_tree}\n\n"
-                f"User Task:\n{task}"
+                f"User Task:\n{clean_task}{pinned_context_str}"
             )
         )
 
+    # Prepend conversation history if resuming/continuing a multi-turn thread
+    prior_messages = list(history_messages) if history_messages else []
+    initial_messages = prior_messages + [current_human_msg]
+
     initial_state = {
-        "task": task,
-        "messages": [initial_human_msg],
+        "task": clean_task,
+        "messages": initial_messages,
         "workspace_root": str(settings.WORKSPACE_ROOT),
         "repository_tree": repo_tree,
         "plan": None,
@@ -142,6 +163,7 @@ def execute_workflow(task: str, test_path: Optional[str] = None, interactive: bo
     }
 
     record_task_in_history(task)
+    final_messages: List[Any] = list(initial_messages)
     final_test_passed = True
     final_retries = 0
     final_summary_text = ""
@@ -240,19 +262,36 @@ def execute_workflow(task: str, test_path: Optional[str] = None, interactive: bo
                 elif node_name == "summarizer":
                     loader.stop()
                     final_summary_text = state_update.get("final_summary", "")
+                    if final_summary_text:
+                        from langchain_core.messages import AIMessage
+                        final_messages.append(AIMessage(content=final_summary_text))
 
-        # Record completed session to Redis
-        save_session_record({
-            "task": task,
-            "model": settings.DEFAULT_PROVIDER,
-            "test_passed": final_test_passed,
-            "retries": final_retries,
-            "summary": final_summary_text[:300] if final_summary_text else "Completed",
-        })
+        # Determine thread title
+        thread_title = clean_task[:60] if clean_task else "Session"
+        if history_messages and len(history_messages) > 0:
+            first_m = history_messages[0]
+            first_c = getattr(first_m, "content", "")
+            if isinstance(first_c, str) and first_c:
+                thread_title = first_c.splitlines()[-1][:60] if "\n" in first_c else first_c[:60]
+
+        if session_id:
+            save_session_thread(
+                session_id=session_id,
+                title=thread_title,
+                messages=final_messages,
+                meta={
+                    "model": get_active_model_name(),
+                    "provider": get_active_provider(),
+                    "test_passed": final_test_passed,
+                },
+            )
+
+        return final_messages
 
     except Exception as e:
         loader.stop()
         err_msg = format_error_for_user(e)
         print_error_badge(console, err_msg)
+        return final_messages
     finally:
         loader.stop()
