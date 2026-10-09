@@ -109,7 +109,7 @@ def chat():
                 if action == "__new_session__":
                     current_session_id = _generate_session_id()
                     current_session_messages = []
-                    console.print("[bold green]Started a new conversation session.[/bold green]")
+                    console.print("[success]Started a new conversation session.[/success]")
                 elif action and action.startswith("__restore_session__:"):
                     target_sid = action.split(":", 1)[1]
                     thread_data = get_session_thread(target_sid)
@@ -131,9 +131,9 @@ def chat():
                                     clean_c = raw_c.split("User Task:")[-1].strip()
                                 else:
                                     clean_c = raw_c.strip()
-                                console.print(f"[#404040]{divider}[/#404040]")
-                                console.print(f"[bold #0099ff]❯[/] [white]{clean_c}[/white]")
-                                console.print(f"[#404040]{divider}[/#404040]")
+                                console.print(f"[divider]{divider}[/divider]")
+                                console.print(f"[prompt]❯[/] [white]{clean_c}[/white]")
+                                console.print(f"[divider]{divider}[/divider]")
                             elif m_type == "ai" or m_cls == "AIMessage":
                                 raw_c = m.content if isinstance(m.content, str) else str(m.content)
                                 if raw_c.strip():
@@ -144,7 +144,7 @@ def chat():
             elif category == "greeting":
                 console.print(f"{payload}")
             elif category == "unsafe":
-                console.print(f"[bold red]Safety Guardrail:[/] {payload}")
+                console.print(f"[error]Safety Guardrail:[/] {payload}")
             elif category == "task":
                 result_messages = execute_workflow(
                     payload,

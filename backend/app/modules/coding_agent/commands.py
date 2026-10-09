@@ -8,8 +8,9 @@ from app.core.config import settings
 from app.core.redis_client import get_session_records, clear_session_records
 from app.integrations.tools import ALL_TOOLS
 from app.constants.commands import COMMAND_DEFINITIONS, SLASH_COMMANDS_LIST
+from app.core.theme import RICH_THEME
 
-console = Console()
+console = Console(theme=RICH_THEME)
 
 # Session task history tracking
 task_history: List[str] = []
@@ -73,9 +74,9 @@ def handle_me(args: str = "") -> Optional[str]:
     if user and user.get("email"):
         name = user.get("name") or user.get("email", "").split("@")[0]
         email = user.get("email", "")
-        console.print(f"[green]User:[/] [white]{name}[/white] [dim]({email})[/dim]\n")
+        console.print(f"[success]User:[/] [white]{name}[/white] [dim]({email})[/dim]\n")
     else:
-        console.print("[dim]Not signed in. Type [cyan]/login[/cyan] to sign in.[/dim]\n")
+        console.print("[dim]Not signed in. Type [cmd]/login[/cmd] to sign in.[/dim]\n")
     return None
 
 
@@ -89,17 +90,17 @@ def handle_whoami(args: str = "") -> Optional[str]:
     ws_path = get_canonical_workspace_path(os.getcwd())
     ws_hash = get_workspace_hash(ws_path)
 
-    console.print("\n[bold cyan]QueryNest Identity & Workspace Status[/bold cyan]")
+    console.print("\n[primary]QueryNest Identity & Workspace Status[/primary]")
     if user:
-        console.print(f"  • [bold white]User:[/] {user.get('name', 'N/A')} ([bold green]{user.get('email', 'N/A')}[/bold green])")
-        console.print(f"  • [bold white]Auth Provider:[/] Google OAuth 2.0")
+        console.print(f"  • [label]User:[/] {user.get('name', 'N/A')} ([primary]{user.get('email', 'N/A')}[/primary])")
+        console.print(f"  • [label]Auth Provider:[/] Google OAuth 2.0")
         if user.get("picture"):
-            console.print(f"  • [bold white]Avatar:[/] [dim]{user.get('picture')}[/dim]")
+            console.print(f"  • [label]Avatar:[/] [dim]{user.get('picture')}[/dim]")
     else:
-        console.print("  • [bold white]User:[/] [dim]Not signed in[/dim]")
+        console.print("  • [label]User:[/] [dim]Not signed in[/dim]")
 
-    console.print(f"  • [bold white]Workspace:[/] [yellow]{ws_path}[/yellow]")
-    console.print(f"  • [bold white]Workspace Hash:[/] [dim]{ws_hash[:12]}[/dim]\n")
+    console.print(f"  • [label]Workspace:[/] [warning]{ws_path}[/warning]")
+    console.print(f"  • [label]Workspace Hash:[/] [dim]{ws_hash[:12]}[/dim]\n")
     return None
 
 
@@ -107,7 +108,7 @@ def handle_logout(args: str = "") -> Optional[str]:
     """Logs out and clears saved Google credentials."""
     from app.core.auth import logout_user
     if logout_user():
-        console.print("[green]✔ Logged out successfully.[/green]\n")
+        console.print("[success]✔ Logged out successfully.[/success]\n")
     return None
 
 
@@ -137,7 +138,7 @@ def handle_model(args: str = "") -> Optional[str]:
                 "model": found["name"],
                 "model_display": found["display"],
             })
-            console.print(f"\n[bold green]✔ Model switched to:[/] [bold yellow]{found['display']}[/bold yellow] ({found['desc']})\n")
+            console.print(f"\n[success]✔ Model switched to:[/] [warning]{found['display']}[/warning] ({found['desc']})\n")
             return None
 
     # Interactive menu mode
@@ -167,7 +168,7 @@ def handle_model(args: str = "") -> Optional[str]:
                 "model": selected_model["name"],
                 "model_display": selected_model["display"],
             })
-            console.print(f"\n[bold green]✔ Active Model updated to:[/] [bold yellow]{selected_model['display']}[/bold yellow]\n")
+            console.print(f"\n[success]✔ Active Model updated to:[/] [warning]{selected_model['display']}[/warning]\n")
 
     return None
 
@@ -185,7 +186,7 @@ def handle_mode(args: str = "") -> Optional[str]:
         current = get_active_mode()
         new_mode = set_active_mode("accept-edits" if current == "normal" else "normal")
 
-    badge = "[bold green]accept-edits[/]" if new_mode == "accept-edits" else "[#a0a0a0]normal[/]"
+    badge = "[success]accept-edits[/]" if new_mode == "accept-edits" else "[muted]normal[/]"
     console.print(f"[dim]Mode switched to:[/] {badge}")
     return None
 
@@ -203,7 +204,7 @@ def handle_sessions(args: str = "") -> Optional[str]:
     arg_clean = args.strip().lower()
     if arg_clean == "clear":
         clear_session_records()
-        console.print("[bold yellow]Session records and threads cleared.[/bold yellow]")
+        console.print("[warning]Session records and threads cleared.[/warning]")
         return None
 
     limit = 10
@@ -239,10 +240,10 @@ def handle_sessions(args: str = "") -> Optional[str]:
 
 def handle_tools(args: str = "") -> Optional[str]:
     """Inspects all registered tools."""
-    console.print(f"\n[bold green]Registered Agent Tools ({len(ALL_TOOLS)})[/bold green]\n")
+    console.print(f"\n[primary]Registered Agent Tools ({len(ALL_TOOLS)})[/primary]\n")
     for t in ALL_TOOLS:
         desc = t.description.strip().splitlines()[0] if t.description else "No description"
-        console.print(f"  • [bold cyan]{t.name:<22}[/] [dim]{desc}[/dim]")
+        console.print(f"  • [primary]{t.name:<22}[/] [dim]{desc}[/dim]")
     console.print()
     return None
 
@@ -252,7 +253,7 @@ def handle_history(args: str = "") -> Optional[str]:
     if not task_history:
         console.print("[dim]No tasks executed in this live session yet.[/dim]")
         return None
-    console.print(f"\n[bold magenta]Current Session Tasks ({len(task_history)})[/bold magenta]\n")
+    console.print(f"\n[primary]Current Session Tasks ({len(task_history)})[/primary]\n")
     for idx, task in enumerate(task_history, 1):
         console.print(f"  {idx}. [white]{task}[/white]")
     console.print()
@@ -292,6 +293,6 @@ def dispatch_command(user_input: str) -> Optional[str]:
     if handler:
         return handler(args)
 
-    console.print(f"[bold red]Unknown command:[/] {cmd}. Type [bold cyan]/help[/bold cyan] for available commands.")
+    console.print(f"[error]Unknown command:[/] {cmd}. Type [cmd]/help[/cmd] for available commands.")
     return None
 

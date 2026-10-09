@@ -308,7 +308,7 @@ def triage_user_input(text: str) -> Tuple[Literal["command", "greeting", "unsafe
         return "greeting", "[white]You're very welcome! Let me know if you need anything else.[/white]"
 
     if is_pure_greeting(trimmed):
-        return "greeting", "[white]👋 [bold]Hi! I'm QueryNest[/bold] — your multi-agent coding assistant. Type a task or [bold cyan]/help[/bold cyan] for commands.[/white]"
+        return "greeting", "[white]👋 [bold]Hi! I'm QueryNest[/bold] — your multi-agent coding assistant. Type a task or [cmd]/help[/cmd] for commands.[/white]"
 
     # Extract clean task by stripping conversational prefix if present
     cleaned_task = CONVERSATIONAL_PREFIX_REGEX.sub("", trimmed).strip()

@@ -4,16 +4,17 @@ from typing import List, Tuple, Dict, Any
 from rich.console import Console
 
 from app.core.config import settings
+from app.core.theme import RICH_THEME
 
-console = Console()
+console = Console(theme=RICH_THEME)
 
 
 def render_command_guide(commands_info: List[Tuple[str, str]]):
     """Renders the slash command guide in a clean 2-column layout."""
     for idx, (cmd, desc) in enumerate(commands_info):
-        prefix = "[bold #0099ff]>[/] " if idx == 0 else "  "
-        cmd_styled = f"[bold white]{cmd:<18}[/bold white]" if idx == 0 else f"[white]{cmd:<18}[/white]"
-        console.print(f"{prefix}{cmd_styled}  [#a0a0a0]{desc}[/#a0a0a0]")
+        prefix = "[prompt]>[/] " if idx == 0 else "  "
+        cmd_styled = f"[title]{cmd:<18}[/title]" if idx == 0 else f"[white]{cmd:<18}[/white]"
+        console.print(f"{prefix}{cmd_styled}  [muted]{desc}[/muted]")
 
 
 def render_session_list(sessions: List[Dict[str, Any]], format_time_fn, limit: int = 6):
@@ -26,7 +27,7 @@ def render_session_list(sessions: List[Dict[str, Any]], format_time_fn, limit: i
     time_col_width = 12
 
     for idx, s in enumerate(sessions):
-        prefix = "[bold #0099ff]>[/] " if idx == 0 else "  "
+        prefix = "[prompt]>[/] " if idx == 0 else "  "
         raw_task = s.get("task", "Untitled Task").strip().replace("\n", " ")
         time_str = format_time_fn(s.get("created_at"))
 
@@ -36,11 +37,11 @@ def render_session_list(sessions: List[Dict[str, Any]], format_time_fn, limit: i
         else:
             task_title = raw_task
 
-        title_styled = f"[bold white]{task_title}[/bold white]" if idx == 0 else f"[white]{task_title}[/white]"
+        title_styled = f"[title]{task_title}[/title]" if idx == 0 else f"[white]{task_title}[/white]"
         spacing_count = max(2, term_width - 4 - len(task_title) - len(time_str))
         spacing = " " * spacing_count
 
-        console.print(f"{prefix}{title_styled}{spacing}[#a0a0a0]{time_str}[/#a0a0a0]")
+        console.print(f"{prefix}{title_styled}{spacing}[muted]{time_str}[/muted]")
 
 
 def _format_full_path(path_str: str) -> str:
@@ -128,5 +129,5 @@ def render_action_badge(tool_name: str, args: Dict[str, Any]):
     if not payload or payload == "{}":
         return
 
-    console.print(f"[bold yellow]{prefix}:[/] [white]{payload}[/white]")
+    console.print(f"[warning]{prefix}:[/] [white]{payload}[/white]")
 

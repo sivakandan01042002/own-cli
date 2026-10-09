@@ -3,6 +3,8 @@ from rich.console import Console
 from rich.live import Live
 from rich.text import Text
 
+from app.core.theme import COLORS, RICH_THEME
+
 
 class ShimmerText:
     """
@@ -14,11 +16,11 @@ class ShimmerText:
     def __init__(
         self,
         message: str = "",
-        base_color: str = "#707070",
+        base_color: Optional[str] = None,
         beam_width: int = 4,
     ):
         self.message = message
-        self.base_color = base_color
+        self.base_color = base_color or COLORS["shimmer_base"]
         self.beam_width = beam_width
         self.pos = -beam_width
         self.msg_len = len(message)
@@ -32,24 +34,20 @@ class ShimmerText:
     def __rich__(self) -> Text:
         text = Text()
 
-        # 1. Neutral scrolling dot spinner (no color / dim as requested)
+        # 1. Neutral scrolling dot spinner
         spinner_char = self.SPINNER_FRAMES[self.frame_idx % len(self.SPINNER_FRAMES)]
         text.append(f"{spinner_char} ", style="dim")
         self.frame_idx += 1
 
-        # 2. Cement base with Glowing Green Shimmer Wave
-        # Base: #707070 (cement grey)
-        # Gradient peak: bold #22c55e (vivid green)
-        # Inner glow: bold #86efac (light green)
-        # Outer glow: #4b7a63 (soft muted green transition)
+        # 2. Cement base with Glowing Mint Green Shimmer Wave from centralized COLORS
         for i, char in enumerate(self.message):
             dist = abs(i - self.pos)
             if dist == 0:
-                text.append(char, style="bold #22c55e")
+                text.append(char, style=COLORS["shimmer_peak"])
             elif dist == 1:
-                text.append(char, style="bold #86efac")
+                text.append(char, style=COLORS["shimmer_glow"])
             elif dist == 2:
-                text.append(char, style="#4b7a63")
+                text.append(char, style=COLORS["shimmer_trail"])
             else:
                 text.append(char, style=self.base_color)
 

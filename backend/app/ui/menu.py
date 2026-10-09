@@ -30,19 +30,7 @@ def _get_safe_output():
         )
 
 
-MENU_STYLE = Style.from_dict({
-    "menu-title": "fg:#ffffff",
-    "menu-instruction": "dim #777777",
-    "active-pointer": "bold #0099ff",
-    "active-label": "fg:#ffffff",
-    "active-desc": "fg:#a0a0a0",
-    "inactive-pointer": "",
-    "inactive-label": "fg:#cccccc",
-    "inactive-desc": "dim #777777",
-    "ws-path": "bold #00d4ff",
-    "ws-title": "fg:#ffffff",
-    "ws-desc": "fg:#d0d0d0",
-})
+from app.core.theme import MENU_STYLE
 
 
 def show_interactive_menu(
@@ -50,14 +38,11 @@ def show_interactive_menu(
     instruction: str = "Use ↑/↓ to navigate, Enter to select, Esc to cancel",
     title: Any = "",
     indent_pointer: bool = True,
+    max_visible: int = 6,
 ) -> Optional[str]:
     """
     Renders an interactive terminal menu with up/down arrow navigation.
-    
-    The active selection is marked with a vivid blue '>' pointer (#0099ff).
-    Instructions are displayed cleanly beneath the list.
-    Pressing Enter selects the item and returns its payload string.
-    Pressing Esc or Ctrl+C exits and returns None.
+    Limits visible items to max_visible (default: 6) with a smooth sliding window.
     """
     if not items:
         return None
@@ -78,11 +63,24 @@ def show_interactive_menu(
                 lines.append(("class:menu-title", f"{title}\n"))
 
         term_width = shutil.get_terminal_size((80, 24)).columns
+        total_items = len(items)
+
+        # Sliding window calculation for max_visible items
+        if total_items > max_visible:
+            half = max_visible // 2
+            start_idx = max(0, min(selected_index[0] - half, total_items - max_visible))
+            end_idx = start_idx + max_visible
+        else:
+            start_idx = 0
+            end_idx = total_items
+
+        visible_indices = list(range(start_idx, end_idx))
 
         is_inline_subtitle = any(bool(desc and desc.startswith("(")) for _, _, desc in items)
 
         if is_inline_subtitle:
-            for idx, (val, label, desc) in enumerate(items):
+            for idx in visible_indices:
+                val, label, desc = items[idx]
                 is_active = idx == selected_index[0]
                 pointer_class = "class:active-pointer" if is_active else "class:inactive-pointer"
                 label_class = "class:active-label" if is_active else "class:inactive-label"
@@ -99,7 +97,8 @@ def show_interactive_menu(
             if is_wide_list:
                 time_width = 12
                 max_label_width = max(20, term_width - time_width - 8)
-                for idx, (val, label, desc) in enumerate(items):
+                for idx in visible_indices:
+                    val, label, desc = items[idx]
                     is_active = idx == selected_index[0]
                     clean_label = label if len(label) <= max_label_width else (label[:max_label_width - 3] + "...")
                     space_count = max(2, term_width - 6 - len(clean_label) - len(desc or ""))
@@ -117,7 +116,8 @@ def show_interactive_menu(
             else:
                 max_label_len = max(len(label) for _, label, _ in items) if items else 15
                 pad = max(max_label_len + 3, 18)
-                for idx, (val, label, desc) in enumerate(items):
+                for idx in visible_indices:
+                    val, label, desc = items[idx]
                     is_active = idx == selected_index[0]
                     if is_active:
                         lines.append(("class:active-pointer", ptr_active))
@@ -128,10 +128,13 @@ def show_interactive_menu(
                         lines.append(("class:inactive-label", f"{label:<{pad}}"))
                         lines.append(("class:inactive-desc", f"{desc}\n"))
 
-
         if instruction:
             lines.append(("", "\n"))
-            lines.append(("class:menu-instruction", f"  ({instruction})\n"))
+            if total_items > max_visible:
+                counter = f"{selected_index[0] + 1}/{total_items} · "
+                lines.append(("class:menu-instruction", f"  ({counter}{instruction})\n"))
+            else:
+                lines.append(("class:menu-instruction", f"  ({instruction})\n"))
 
         return lines
 

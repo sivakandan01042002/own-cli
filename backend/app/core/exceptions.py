@@ -34,19 +34,19 @@ def format_error_for_user(error: Exception) -> str:
     if "tool_use_failed" in err_str or "Failed to parse tool call" in err_str:
         return (
             "The model produced a malformed tool call string.\n"
-            "   [dim]Suggestion:[/] Ask to inspect specific files directly, or switch with [bold cyan]/model gemini[/bold cyan]."
+            "   [dim]Suggestion:[/] Ask to inspect specific files directly, or switch with [cmd]/model gemini[/cmd]."
         )
 
     elif "404" in err_str or "model_not_found" in err_str:
         return (
             "The configured model ID is currently offline or retired.\n"
-            "   [dim]Suggestion:[/] Switch active provider with [bold cyan]/model gemini[/bold cyan] or [bold cyan]/model groq[/bold cyan]."
+            "   [dim]Suggestion:[/] Switch active provider with [cmd]/model gemini[/cmd] or [cmd]/model groq[/cmd]."
         )
 
     elif "429" in err_str or "rate_limit" in err_str.lower():
         return (
             "Request quota temporarily reached on free tier.\n"
-            "   [dim]Suggestion:[/] Switch with [bold cyan]/model gemini[/bold cyan] or wait a few seconds."
+            "   [dim]Suggestion:[/] Switch with [cmd]/model gemini[/cmd] or wait a few seconds."
         )
 
     elif "api_key" in err_str.lower() or "authentication" in err_str.lower() or "401" in err_str:

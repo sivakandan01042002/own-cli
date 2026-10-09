@@ -193,7 +193,7 @@ class FramedPromptSession:
                     Float(
                         xcursor=True,
                         ycursor=True,
-                        content=CompletionsMenu(max_height=8, scroll_offset=1),
+                        content=CompletionsMenu(max_height=6, scroll_offset=1),
                     )
                 ],
             ),

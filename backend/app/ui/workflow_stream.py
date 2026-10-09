@@ -108,7 +108,7 @@ def execute_workflow(
     if pinned_files:
         sections = []
         for pf in pinned_files:
-            console.print(f"[bold green]Pinned context:[/] [dim]{pf['path']}[/dim]")
+            console.print(f"[primary]Pinned context:[/] [dim]{pf['path']}[/dim]")
             sections.append(f"--- Pinned {pf['type'].capitalize()}: {pf['path']} ---\n{pf['content']}")
         pinned_context_str = "\n\n" + "\n\n".join(sections)
 
@@ -214,7 +214,7 @@ def execute_workflow(
     lock_sid = session_id or "default_session"
     ws_lock = WorkspaceLock(settings.WORKSPACE_ROOT)
     if not ws_lock.acquire(lock_sid):
-        console.print("[bold yellow]Notice:[/] Another QueryNest session is currently operating on this workspace. Execution queued/prevented.")
+        console.print("[warning]Notice:[/] Another QueryNest session is currently operating on this workspace. Execution queued/prevented.")
         return final_messages
 
     latest_tool_history = list(prior_tool_history)
@@ -254,7 +254,7 @@ def execute_workflow(
                         action, feedback = prompt_plan_permission()
 
                         if action == "cancel":
-                            console.print("[#a0a0a0]Workflow cancelled.[/#a0a0a0]")
+                            console.print("[muted]Workflow cancelled.[/muted]")
                             return final_messages
                         elif action == "all":
                             session_auto_accept = True
@@ -276,7 +276,7 @@ def execute_workflow(
                                 action, feedback = prompt_tool_permission(pending_tool_calls)
 
                                 if action == "cancel":
-                                    console.print("[#a0a0a0]Tool execution cancelled.[/#a0a0a0]")
+                                    console.print("[muted]Tool execution cancelled.[/muted]")
                                     return final_messages
                                 elif action == "all":
                                     session_auto_accept = True
@@ -307,9 +307,9 @@ def execute_workflow(
                     final_test_passed = passed
                     loader.stop()
                     if passed:
-                        console.print("[white]Verification Passed (Exit Code 0)[/white]")
+                        console.print("[success]Verification Passed (Exit Code 0)[/success]")
                     else:
-                        console.print("[#a0a0a0]Verification Failed[/#a0a0a0]")
+                        console.print("[muted]Verification Failed[/muted]")
                         if test_results:
                             console.print(f"[dim]{test_results[:300]}...[/dim]")
                         loader.start("Diagnosing bug & self-healing...")
@@ -318,7 +318,7 @@ def execute_workflow(
                     retry = state_update.get("retry_count", 1)
                     final_retries = retry
                     loader.stop()
-                    console.print(f"[#a0a0a0]Self-Healing Attempt {retry} in progress...[/#a0a0a0]")
+                    console.print(f"[muted]Self-Healing Attempt {retry} in progress...[/muted]")
                     loader.start("Applying fixes...")
 
                 elif node_name == "summarizer":
@@ -357,7 +357,7 @@ def execute_workflow(
     except KeyboardInterrupt:
         loader.stop()
         cancel_active_subprocess()
-        console.print("\n[yellow]Execution cancelled by user. Session checkpointed.[/yellow]")
+        console.print("\n[warning]Execution cancelled by user. Session checkpointed.[/warning]")
         if session_id:
             try:
                 save_session_thread(

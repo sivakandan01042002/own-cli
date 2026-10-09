@@ -258,17 +258,24 @@ def start_google_login(port: int = 8585, timeout_seconds: int = 60) -> Optional[
 
 
 def login_google() -> Optional[Dict[str, Any]]:
-    """Initiates Google OAuth 2.0 sign-in flow with clean terminal feedback."""
+    """Initiates Google OAuth 2.0 sign-in flow with clean, ephemeral terminal feedback."""
+    import time
     from rich.console import Console
-    console = Console()
-    console.print("\n[dim]Opening Google Sign-In in your browser...[/dim]")
-    user = start_google_login()
-    if user:
-        name = user.get("name") or user.get("email", "").split("@")[0]
-        email = user.get("email", "")
-        console.print(f"[green]Signed in as:[/] [white]{name}[/white] [dim]({email})[/dim]\n")
-    else:
-        console.print("[yellow]Sign-in timed out or was cancelled.[/yellow]\n")
+    from rich.live import Live
+    from rich.text import Text
+    from app.core.theme import RICH_THEME
+
+    console = Console(theme=RICH_THEME)
+    with Live(Text.from_markup("\n[dim]Opening Google Sign-In in your browser...[/dim]"), console=console, transient=True) as live:
+        user = start_google_login()
+        if user:
+            name = user.get("name") or user.get("email", "").split("@")[0]
+            email = user.get("email", "")
+            live.update(Text.from_markup(f"\n[success]Signed in as:[/] [white]{name}[/white] [dim]({email})[/dim]"))
+            time.sleep(2.5)
+        else:
+            live.update(Text.from_markup("\n[warning]Sign-in timed out or was cancelled.[/warning]"))
+            time.sleep(2.5)
     return user
 
 

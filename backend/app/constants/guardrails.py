@@ -66,7 +66,7 @@ ACTION_VERBS: Set[str] = {
 QUESTION_WORDS: Set[str] = {"why", "how", "what", "where", "who", "when", "which"}
 
 # Standard Guardrail Response Messages
-DEFAULT_GREETING_MSG: str = "[white]👋 [bold]Hi! I'm QueryNest[/bold] — your multi-agent coding assistant. Type a task or [bold cyan]/help[/bold cyan] for commands.[/white]"
+DEFAULT_GREETING_MSG: str = "[white]👋 [bold]Hi! I'm QueryNest[/bold] — your multi-agent coding assistant. Type a task or [cmd]/help[/cmd] for commands.[/white]"
 DEFAULT_ACKNOWLEDGMENT_MSG: str = "[white]You're very welcome! Let me know if you need anything else.[/white]"
 DEFAULT_SAFETY_DENIAL_MSG: str = "I am an AI coding assistant focused on software engineering. Please provide a programming or technical task."
 
