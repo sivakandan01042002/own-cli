@@ -71,3 +71,6 @@ tests
 .querynest_cache
 .assets/
 assets/
+*.docx
+*.doc
+resume.docx

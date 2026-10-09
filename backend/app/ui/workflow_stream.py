@@ -152,9 +152,30 @@ def execute_workflow(
             )
         )
 
-    # Prepend conversation history if resuming/continuing a multi-turn thread
+    # Prepend conversation history and restore tool execution records if resuming
     prior_messages = list(history_messages) if history_messages else []
     initial_messages = prior_messages + [current_human_msg]
+
+    prior_tool_history = []
+    prior_active_task = None
+    prior_active_intent = None
+    prior_active_task_id = None
+    if session_id:
+        from app.core.redis_client import get_session_thread
+        thread_info = get_session_thread(session_id)
+        if thread_info:
+            meta = thread_info.get("meta", {}) if "meta" in thread_info else thread_info
+            prior_tool_history = meta.get("tool_execution_history", [])
+            prior_active_task = meta.get("active_task_context")
+            prior_active_intent = meta.get("active_task_intent")
+            prior_active_task_id = meta.get("active_task_id")
+
+            # Derive active intent from latest tool record if not explicitly stored
+            if not prior_active_intent and prior_tool_history:
+                for rec in reversed(prior_tool_history):
+                    if rec.get("intent") and rec["intent"] != "conversation":
+                        prior_active_intent = rec["intent"]
+                        break
 
     initial_state = {
         "task": clean_task,
@@ -164,6 +185,10 @@ def execute_workflow(
         "plan": None,
         "coder_findings": [],
         "modified_files": [],
+        "tool_execution_history": prior_tool_history,
+        "active_task_context": prior_active_task,
+        "active_task_intent": prior_active_intent,
+        "active_task_id": prior_active_task_id,
         "test_command": test_path or "",
         "test_results": None,
         "test_passed": False,
@@ -192,14 +217,31 @@ def execute_workflow(
         console.print("[bold yellow]Notice:[/] Another QueryNest session is currently operating on this workspace. Execution queued/prevented.")
         return final_messages
 
+    latest_tool_history = list(prior_tool_history)
+    latest_active_task = prior_active_task
+    latest_active_intent = prior_active_intent
+    latest_active_task_id = prior_active_task_id
+
     try:
         for payload in coding_agent_app.stream(initial_state, stream_mode="updates"):
             if not isinstance(payload, dict):
                 continue
 
             for node_name, state_update in payload.items():
+                if isinstance(state_update, dict):
+                    if "tool_execution_history" in state_update:
+                        latest_tool_history = state_update["tool_execution_history"]
+                    if "active_task_context" in state_update:
+                        latest_active_task = state_update["active_task_context"]
+                    if "active_task_intent" in state_update:
+                        latest_active_intent = state_update["active_task_intent"]
+                    if "active_task_id" in state_update:
+                        latest_active_task_id = state_update["active_task_id"]
 
-                if node_name == "planner":
+                if node_name == "classifier":
+                    loader.start("Routing task...")
+
+                elif node_name == "planner":
                     loader.stop()
                     plan_content = state_update.get("plan", "Plan generated.")
                     print_planner_header(console)
@@ -219,7 +261,7 @@ def execute_workflow(
 
                     loader.start("Analyzing codebase...")
 
-                elif node_name == "coder":
+                elif node_name in ("coder", "tool_agent", "code_inspector"):
                     messages = state_update.get("messages", [])
                     has_tool_calls = False
 
@@ -250,7 +292,7 @@ def execute_workflow(
                     if not has_tool_calls:
                         loader.start("Analyzing findings...")
 
-                elif node_name == "tools":
+                elif node_name in ("tools", "direct_action_tools", "read_only_tools", "coder_tools"):
                     loader.stop()
                     if not interactive or session_auto_accept:
                         from app.ui.renderers import render_action_badge
@@ -259,15 +301,15 @@ def execute_workflow(
                     pending_tool_calls = []
                     loader.start("Analyzing findings...")
 
-                elif node_name == "validator":
+                elif node_name in ("validator", "dedicated_test_runner"):
                     passed = state_update.get("test_passed", False)
                     test_results = state_update.get("test_results", "")
                     final_test_passed = passed
                     loader.stop()
                     if passed:
-                        console.print("[white]Pytest Verification Passed (Exit Code 0)[/white]")
+                        console.print("[white]Verification Passed (Exit Code 0)[/white]")
                     else:
-                        console.print("[#a0a0a0]Pytest Verification Failed[/#a0a0a0]")
+                        console.print("[#a0a0a0]Verification Failed[/#a0a0a0]")
                         if test_results:
                             console.print(f"[dim]{test_results[:300]}...[/dim]")
                         loader.start("Diagnosing bug & self-healing...")
@@ -303,6 +345,10 @@ def execute_workflow(
                     "model": get_active_model_name(),
                     "provider": get_active_provider(),
                     "test_passed": final_test_passed,
+                    "tool_execution_history": latest_tool_history,
+                    "active_task_context": latest_active_task,
+                    "active_task_intent": latest_active_intent,
+                    "active_task_id": latest_active_task_id,
                 },
             )
 

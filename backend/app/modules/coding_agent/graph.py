@@ -1,15 +1,24 @@
 from langgraph.graph import StateGraph, START, END
 from app.modules.coding_agent.state import CodingAgentState
 from app.modules.coding_agent.nodes import (
+    classifier_node,
+    conversation_node,
+    tool_agent_node,
+    direct_action_tool_node,
+    code_inspector_node,
+    read_only_tool_node,
     planner_node,
     coder_node,
-    tool_node,
-    validator_node,
+    coder_tool_node,
+    dedicated_test_runner_node,
+    validation_node,
     fixer_node,
     summarizer_node,
 )
 from app.modules.coding_agent.edges import (
-    route_initial_intent,
+    route_classified_intent,
+    should_continue_tool_agent,
+    should_continue_code_inspector,
     should_continue_coder,
     should_retry_or_finish,
 )
@@ -17,40 +26,81 @@ from app.modules.coding_agent.edges import (
 # 1. Initialize the StateGraph with the CodingAgentState schema
 workflow = StateGraph(CodingAgentState)
 
-# 2. Register all agent and tool nodes
+# 2. Register all agent and tool execution nodes
+workflow.add_node("classifier", classifier_node)
+workflow.add_node("conversation", conversation_node)
+workflow.add_node("tool_agent", tool_agent_node)
+workflow.add_node("direct_action_tools", direct_action_tool_node)
+workflow.add_node("code_inspector", code_inspector_node)
+workflow.add_node("read_only_tools", read_only_tool_node)
 workflow.add_node("planner", planner_node)
 workflow.add_node("coder", coder_node)
-workflow.add_node("tools", tool_node)
-workflow.add_node("validator", validator_node)
+workflow.add_node("coder_tools", coder_tool_node)
+workflow.add_node("dedicated_test_runner", dedicated_test_runner_node)
+workflow.add_node("validator", validation_node)
 workflow.add_node("fixer", fixer_node)
 workflow.add_node("summarizer", summarizer_node)
 
-# 3. Smart Initial Routing: START -> (planner OR coder directly for questions)
+# 3. Graph Entry -> Classifier (Snapshot & Intent Selection)
+workflow.add_edge(START, "classifier")
+
+# 4. Classifier -> Specialized Agent Nodes
 workflow.add_conditional_edges(
-    START,
-    route_initial_intent,
+    "classifier",
+    route_classified_intent,
     {
+        "conversation": "conversation",
+        "tool_agent": "tool_agent",
+        "code_inspector": "code_inspector",
         "planner": "planner",
-        "coder": "coder",
+        "dedicated_test_runner": "dedicated_test_runner",
     },
 )
 
-# 4. Planner always hands off to Coder
+# 5. Conversation Path -> Direct to Summarizer
+workflow.add_edge("conversation", "summarizer")
+
+# 6. Direct Action Tool Loop (Media / Web / Browser)
+workflow.add_conditional_edges(
+    "tool_agent",
+    should_continue_tool_agent,
+    {
+        "direct_action_tools": "direct_action_tools",
+        "summarizer": "summarizer",
+    },
+)
+workflow.add_edge("direct_action_tools", "tool_agent")
+
+# 7. Read-Only Code Inspector Loop
+workflow.add_conditional_edges(
+    "code_inspector",
+    should_continue_code_inspector,
+    {
+        "read_only_tools": "read_only_tools",
+        "summarizer": "summarizer",
+    },
+)
+workflow.add_edge("read_only_tools", "code_inspector")
+
+# 8. Code Change Workflow: Planner -> Coder
 workflow.add_edge("planner", "coder")
 
-# 5. Coder tool execution or completion decision
+# 9. Coder Modification & Verification Loop
 workflow.add_conditional_edges(
     "coder",
     should_continue_coder,
     {
-        "tools": "tools",
+        "coder_tools": "coder_tools",
         "validator": "validator",
         "summarizer": "summarizer",
     },
 )
-workflow.add_edge("tools", "coder")
+workflow.add_edge("coder_tools", "coder")
 
-# 6. Validation & self-healing retry loop
+# 10. Dedicated Test Runner -> Summarizer
+workflow.add_edge("dedicated_test_runner", "summarizer")
+
+# 11. Validation & Repair Retry Loop
 workflow.add_conditional_edges(
     "validator",
     should_retry_or_finish,
@@ -61,8 +111,8 @@ workflow.add_conditional_edges(
 )
 workflow.add_edge("fixer", "coder")
 
-# 7. Complete task after summary
+# 12. Terminal Completion
 workflow.add_edge("summarizer", END)
 
-# 8. Compile the runnable LangGraph application
+# 13. Compile the runnable LangGraph application
 coding_agent_app = workflow.compile()

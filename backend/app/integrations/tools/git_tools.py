@@ -78,3 +78,22 @@ def run_git_command(subcommand: str, timeout: int = 30) -> str:
         return f"Error: Git command timed out after {timeout} seconds."
     except Exception as e:
         return f"Error executing git command: {str(e)}"
+
+
+from app.constants import READ_ONLY_GIT_SUBCOMMANDS
+
+
+@tool
+def run_git_read_only(subcommand: str, timeout: int = 30) -> str:
+    """
+    Executes safe, strictly read-only Git commands (status, diff, log, branch, show, ls-files).
+    Mutating commands like commit, add, checkout, or push are strictly rejected.
+    """
+    clean = subcommand.strip()
+    if clean.lower().startswith("git "):
+        clean = clean[4:].strip()
+    first_word = clean.split()[0].lower() if clean.split() else ""
+    if first_word not in READ_ONLY_GIT_SUBCOMMANDS:
+        return f"Error: Git subcommand '{first_word}' is not permitted in read-only inspection. Allowed: {sorted(READ_ONLY_GIT_SUBCOMMANDS)}"
+    return run_git_command.invoke({"subcommand": clean, "timeout": timeout})
+

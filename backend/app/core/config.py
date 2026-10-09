@@ -1,5 +1,9 @@
+import os
 from pathlib import Path
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+USER_CONFIG_DIR = Path.home() / ".querynest"
+USER_CONFIG_DIR.mkdir(parents=True, exist_ok=True)
 
 
 class Settings(BaseSettings):
@@ -10,8 +14,8 @@ class Settings(BaseSettings):
     VERSION: str = "1.0.0"
     DEBUG: bool = True
 
-    # Workspace Root Path (defaults to project root)
-    WORKSPACE_ROOT: Path = Path(__file__).resolve().parent.parent.parent.parent
+    # Workspace Root Path (defaults to current working directory, or QUERYNEST_WORKSPACE_ROOT if set)
+    WORKSPACE_ROOT: Path = Path(os.getenv("QUERYNEST_WORKSPACE_ROOT", Path.cwd()))
 
     # ---------------------------------------------------------
     # LLM API Keys & Provider Defaults
@@ -50,7 +54,11 @@ class Settings(BaseSettings):
     COMMAND_TIMEOUT_SECONDS: int = 30
 
     model_config = SettingsConfigDict(
-        env_file=str(Path(__file__).resolve().parent.parent.parent / ".env"),
+        env_file=[
+            str(Path.cwd() / ".env"),
+            str(USER_CONFIG_DIR / ".env"),
+            str(Path(__file__).resolve().parent.parent.parent / ".env"),
+        ],
         env_file_encoding="utf-8",
         extra="ignore"
     )

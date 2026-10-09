@@ -69,3 +69,25 @@ QUESTION_WORDS: Set[str] = {"why", "how", "what", "where", "who", "when", "which
 DEFAULT_GREETING_MSG: str = "[white]👋 [bold]Hi! I'm QueryNest[/bold] — your multi-agent coding assistant. Type a task or [bold cyan]/help[/bold cyan] for commands.[/white]"
 DEFAULT_ACKNOWLEDGMENT_MSG: str = "[white]You're very welcome! Let me know if you need anything else.[/white]"
 DEFAULT_SAFETY_DENIAL_MSG: str = "I am an AI coding assistant focused on software engineering. Please provide a programming or technical task."
+
+# Multi-Agent Execution Limits & Invariants
+MAX_TOOL_CALLS_PER_TURN: int = 8
+MAX_DIRECT_TOOL_ITERATIONS: int = 5
+MAX_INSPECTOR_TOOL_ITERATIONS: int = 5
+MAX_CODER_TOOL_ITERATIONS: int = 10
+MAX_REPAIR_RETRIES: int = 3
+
+# Allowlisted Tool Subcommands & Runners
+READ_ONLY_GIT_SUBCOMMANDS: Set[str] = {
+    "status", "diff", "log", "branch", "show", "ls-files"
+}
+
+ALLOWLISTED_TEST_RUNNERS: Set[str] = {
+    "pytest",
+    "python -m pytest",
+    "npm test",
+    "npm run test",
+    "go test",
+    "cargo test",
+}
+

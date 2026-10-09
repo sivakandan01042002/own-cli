@@ -1,0 +1,46 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "querynest"
+version = "1.0.0"
+description = "QueryNest - Autonomous Multi-Agent Coding Assistant CLI"
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+authors = [{ name = "QueryNest Team" }]
+keywords = ["ai", "agents", "langgraph", "coding-assistant", "cli", "gemini", "groq"]
+
+dependencies = [
+    "fastapi>=0.115.0",
+    "uvicorn[standard]>=0.30.0",
+    "pydantic>=2.0.0",
+    "pydantic-settings>=2.0.0",
+    "python-dotenv>=1.0.0",
+    "langgraph>=0.2.0",
+    "langchain-core>=0.3.0",
+    "redis>=5.0.0",
+    "pymongo>=4.8.0",
+    "psycopg2-binary>=2.9.0",
+    "langchain-groq>=0.2.0",
+    "langchain-google-genai>=2.0.0",
+    "pytest>=8.0.0",
+    "typer>=0.12.0",
+    "rich>=13.0.0",
+    "prompt_toolkit>=3.0.40",
+    "ddgs>=9.0.0",
+    "python-docx>=1.1.0",
+    "openpyxl>=3.1.2",
+    "pillow>=10.0.0",
+    "httpx>=0.28.0",
+]
+
+[project.scripts]
+querynest = "app.cli:main"
+
+[tool.setuptools.package-dir]
+"" = "backend"
+
+[tool.setuptools.packages.find]
+where = ["backend"]

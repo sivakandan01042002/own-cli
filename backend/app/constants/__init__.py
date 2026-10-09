@@ -5,10 +5,14 @@ Modular domain modules:
 - app.constants.guardrails
 - app.constants.commands
 - app.constants.storage
+- app.constants.terminal
 """
 
 from app.constants.workspace import (
     DEFAULT_IGNORE_DIRS,
+    SOURCE_CODE_EXTENSIONS,
+    BUILD_CONFIG_FILES,
+    DOC_AND_MEDIA_EXTENSIONS,
 )
 
 from app.constants.guardrails import (
@@ -23,6 +27,13 @@ from app.constants.guardrails import (
     DEFAULT_GREETING_MSG,
     DEFAULT_ACKNOWLEDGMENT_MSG,
     DEFAULT_SAFETY_DENIAL_MSG,
+    MAX_TOOL_CALLS_PER_TURN,
+    MAX_DIRECT_TOOL_ITERATIONS,
+    MAX_INSPECTOR_TOOL_ITERATIONS,
+    MAX_CODER_TOOL_ITERATIONS,
+    MAX_REPAIR_RETRIES,
+    READ_ONLY_GIT_SUBCOMMANDS,
+    ALLOWLISTED_TEST_RUNNERS,
 )
 
 from app.constants.commands import (
@@ -50,6 +61,9 @@ from app.constants.terminal import (
 
 __all__ = [
     "DEFAULT_IGNORE_DIRS",
+    "SOURCE_CODE_EXTENSIONS",
+    "BUILD_CONFIG_FILES",
+    "DOC_AND_MEDIA_EXTENSIONS",
     "PURE_GREETING_PATTERNS",
     "ACKNOWLEDGMENT_PATTERNS",
     "BLOCKED_INPUT_PATTERNS",
@@ -61,6 +75,13 @@ __all__ = [
     "DEFAULT_GREETING_MSG",
     "DEFAULT_ACKNOWLEDGMENT_MSG",
     "DEFAULT_SAFETY_DENIAL_MSG",
+    "MAX_TOOL_CALLS_PER_TURN",
+    "MAX_DIRECT_TOOL_ITERATIONS",
+    "MAX_INSPECTOR_TOOL_ITERATIONS",
+    "MAX_CODER_TOOL_ITERATIONS",
+    "MAX_REPAIR_RETRIES",
+    "READ_ONLY_GIT_SUBCOMMANDS",
+    "ALLOWLISTED_TEST_RUNNERS",
     "COMMAND_DEFINITIONS",
     "SLASH_COMMANDS_META",
     "SLASH_COMMANDS_LIST",
@@ -76,4 +97,3 @@ __all__ = [
     "MIN_SUBPROCESS_TIMEOUT",
     "MAX_OUTPUT_BUFFER_CHARS",
 ]
-

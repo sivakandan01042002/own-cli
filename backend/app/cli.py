@@ -41,6 +41,36 @@ app = typer.Typer(help="QueryNest Multi-Agent Coding CLI", add_completion=False)
 console = Console(theme=RICH_THEME)
 
 
+def ensure_default_environment():
+    """Creates default workspace folders and global user config if missing."""
+    try:
+        (Path.cwd() / "assets").mkdir(parents=True, exist_ok=True)
+        (Path.cwd() / ".querynest_cache").mkdir(parents=True, exist_ok=True)
+
+        user_config_dir = Path.home() / ".querynest"
+        user_config_dir.mkdir(parents=True, exist_ok=True)
+        user_env = user_config_dir / ".env"
+        if not user_env.exists() and not (Path.cwd() / ".env").exists():
+            user_env.write_text(
+                "# QueryNest Global Configuration\n"
+                "GEMINI_API_KEY=\n"
+                "GROQ_API_KEY=\n"
+                "DEFAULT_PROVIDER=gemini\n"
+                "REDIS_URL=redis://localhost:6379/0\n",
+                encoding="utf-8"
+            )
+    except Exception:
+        pass
+
+
+@app.callback(invoke_without_command=True)
+def default_entrypoint(ctx: typer.Context):
+    """Default invocation: running 'querynest' without subcommands launches interactive chat."""
+    ensure_default_environment()
+    if ctx.invoked_subcommand is None:
+        chat()
+
+
 def _generate_session_id() -> str:
     """Generates a clean timestamped session ID."""
     return f"sess_{datetime.now().strftime('%Y%m%d_%H%M%S')}_{uuid.uuid4().hex[:6]}"
@@ -49,11 +79,11 @@ def _generate_session_id() -> str:
 @app.command()
 def chat():
     """Starts the interactive QueryNest CLI session with multi-turn memory."""
+    ensure_default_environment()
     ensure_workspace_trusted_gate()
     print_banner()
 
     session = FramedPromptSession(
-
         completer=SlashCommandCompleter(),
         style=CLI_STYLE,
     )
@@ -146,5 +176,10 @@ def run(
         console.print(payload)
 
 
-if __name__ == "__main__":
+def main():
+    """Main entrypoint for pip package console_scripts."""
     app()
+
+
+if __name__ == "__main__":
+    main()
