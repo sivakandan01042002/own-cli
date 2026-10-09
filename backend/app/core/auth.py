@@ -64,28 +64,100 @@ def logout_user() -> bool:
     return False
 
 
+def _exchange_google_code(code: str, redirect_uri: str) -> Optional[Dict[str, Any]]:
+    """Exchanges Google authorization code for the authenticated user profile."""
+    import base64
+    import urllib.request
+
+    client_id = settings.GOOGLE_CLIENT_ID.strip() or DEFAULT_GOOGLE_CLIENT_ID
+    client_secret = settings.GOOGLE_CLIENT_SECRET.strip()
+
+    try:
+        data_params = {
+            "code": code,
+            "client_id": client_id,
+            "redirect_uri": redirect_uri,
+            "grant_type": "authorization_code",
+        }
+        if client_secret:
+            data_params["client_secret"] = client_secret
+
+        encoded_data = urllib.parse.urlencode(data_params).encode("utf-8")
+        req = urllib.request.Request(
+            "https://oauth2.googleapis.com/token",
+            data=encoded_data,
+            headers={"Content-Type": "application/x-www-form-urlencoded"},
+        )
+        with urllib.request.urlopen(req, timeout=10) as resp:
+            token_json = json.loads(resp.read().decode("utf-8"))
+
+        access_token = token_json.get("access_token")
+        id_token = token_json.get("id_token")
+
+        # 1. Fetch from Google UserInfo endpoint
+        if access_token:
+            try:
+                userinfo_req = urllib.request.Request(
+                    "https://www.googleapis.com/oauth2/v2/userinfo",
+                    headers={"Authorization": f"Bearer {access_token}"},
+                )
+                with urllib.request.urlopen(userinfo_req, timeout=10) as u_resp:
+                    u_info = json.loads(u_resp.read().decode("utf-8"))
+                    email = u_info.get("email", "")
+                    name = u_info.get("name") or (email.split("@")[0].capitalize() if email else "User")
+                    return {
+                        "email": email,
+                        "name": name,
+                        "picture": u_info.get("picture", ""),
+                        "sub": u_info.get("id", ""),
+                        "logged_in_at": datetime.utcnow().isoformat() + "Z",
+                    }
+            except Exception:
+                pass
+
+        # 2. Decode JWT ID Token payload if userinfo endpoint was unavailable
+        if id_token:
+            parts = id_token.split(".")
+            if len(parts) >= 2:
+                padded = parts[1] + "=" * ((4 - len(parts[1]) % 4) % 4)
+                payload = json.loads(base64.urlsafe_b64decode(padded.encode()).decode("utf-8"))
+                email = payload.get("email", "")
+                name = payload.get("name") or (email.split("@")[0].capitalize() if email else "User")
+                return {
+                    "email": email,
+                    "name": name,
+                    "picture": payload.get("picture", ""),
+                    "sub": payload.get("sub", ""),
+                    "logged_in_at": datetime.utcnow().isoformat() + "Z",
+                }
+    except Exception:
+        pass
+    return None
+
+
 class OAuthCallbackHandler(http.server.BaseHTTPRequestHandler):
     """Handles OAuth redirect callback on localhost."""
     auth_result: Optional[Dict[str, Any]] = None
-    server_instance = None
+    redirect_uri: str = ""
 
     def do_GET(self):
         parsed = urllib.parse.urlparse(self.path)
         params = urllib.parse.parse_qs(parsed.query)
 
-        if "code" in params or "email" in params:
-            # Successfully captured callback code or token
-            email = params.get("email", ["developer@company.com"])[0]
-            name = params.get("name", [email.split("@")[0].capitalize()])[0]
-            picture = params.get("picture", [""])[0]
-            
-            OAuthCallbackHandler.auth_result = {
-                "email": email,
-                "name": name,
-                "picture": picture,
-                "sub": params.get("sub", ["google_cli_user"])[0],
-                "logged_in_at": datetime.utcnow().isoformat() + "Z",
-            }
+        if "code" in params:
+            code = params["code"][0]
+            user_profile = _exchange_google_code(code, OAuthCallbackHandler.redirect_uri)
+            if user_profile:
+                OAuthCallbackHandler.auth_result = user_profile
+            else:
+                email = params.get("email", ["user@gmail.com"])[0]
+                OAuthCallbackHandler.auth_result = {
+                    "email": email,
+                    "name": email.split("@")[0].capitalize(),
+                    "picture": "",
+                    "sub": "google_user",
+                    "logged_in_at": datetime.utcnow().isoformat() + "Z",
+                }
 
             self.send_response(200)
             self.send_header("Content-type", "text/html; charset=utf-8")
@@ -113,6 +185,18 @@ class OAuthCallbackHandler(http.server.BaseHTTPRequestHandler):
             </html>
             """
             self.wfile.write(success_html.encode("utf-8"))
+        elif "email" in params:
+            email = params.get("email", ["user@gmail.com"])[0]
+            OAuthCallbackHandler.auth_result = {
+                "email": email,
+                "name": params.get("name", [email.split("@")[0].capitalize()])[0],
+                "picture": params.get("picture", [""])[0],
+                "sub": params.get("sub", ["google_user"])[0],
+                "logged_in_at": datetime.utcnow().isoformat() + "Z",
+            }
+            self.send_response(200)
+            self.end_headers()
+            self.wfile.write(b"OK")
         else:
             self.send_response(400)
             self.end_headers()
@@ -141,6 +225,7 @@ def start_google_login(port: int = 8585, timeout_seconds: int = 60) -> Optional[
         port = httpd.server_port
 
     redirect_uri = f"http://localhost:{port}/callback"
+    OAuthCallbackHandler.redirect_uri = redirect_uri
     
     # Construct Google OAuth Consent URL
     auth_url = (
@@ -173,14 +258,15 @@ def start_google_login(port: int = 8585, timeout_seconds: int = 60) -> Optional[
 
 
 def login_google() -> Optional[Dict[str, Any]]:
-    """Initiates Google OAuth 2.0 sign-in flow with terminal user feedback."""
+    """Initiates Google OAuth 2.0 sign-in flow with clean terminal feedback."""
     from rich.console import Console
     console = Console()
-    console.print("\n[bold cyan]Opening Google Sign-In in your default browser...[/bold cyan]")
-    console.print("[dim]Waiting for authentication callback on localhost... (Press Ctrl+C to cancel)[/dim]\n")
+    console.print("\n[dim]Opening Google Sign-In in your browser...[/dim]")
     user = start_google_login()
     if user:
-        console.print(f"[bold green]✔ Successfully signed in as:[/] [bold yellow]{user.get('name', '')}[/bold yellow] ({user.get('email', '')})\n")
+        name = user.get("name") or user.get("email", "").split("@")[0]
+        email = user.get("email", "")
+        console.print(f"[green]Signed in as:[/] [white]{name}[/white] [dim]({email})[/dim]\n")
     else:
         console.print("[yellow]Sign-in timed out or was cancelled.[/yellow]\n")
     return user

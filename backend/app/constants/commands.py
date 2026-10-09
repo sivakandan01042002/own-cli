@@ -5,6 +5,7 @@ from typing import List, Tuple
 COMMAND_DEFINITIONS: List[Tuple[str, str, str]] = [
     ("/help", "/help", "Display command reference guide"),
     ("/login", "/login", "Sign in with Google OAuth 2.0"),
+    ("/me", "/me", "View active user profile and email"),
     ("/whoami", "/whoami", "Inspect current user profile and workspace trust"),
     ("/logout", "/logout", "Sign out and clear local credentials"),
     ("/model", "/model", "Interactively select and switch active AI model"),

@@ -99,22 +99,40 @@ from rich.text import Text
 
 
 def create_banner_panel(workspace_root: str, active_provider: str, active_model: str) -> Panel:
-    """Creates the standard welcome banner panel with centered ASCII art and clean left-aligned metadata."""
+    """Creates a modern, developer-first welcome banner panel with clean layout and dynamic greeting."""
+    from app.core.auth import get_current_user
+    user = get_current_user()
+
     ascii_centered = Align.center(Text.from_markup(QUERYNEST_ASCII_ART))
 
-    content = Group(
+    elements = [
         ascii_centered,
         Text(""),
-        Text.from_markup("[dim]Autonomous multi-agent coding, testing & self-healing state machine[/dim]"),
+    ]
+
+    if user and user.get("name"):
+        first_name = user["name"].split()[0] if user["name"] else "there"
+        elements.append(Text.from_markup(f"[bold white]Hi {first_name}, what are we building today?[/bold white]"))
+    else:
+        elements.append(Text.from_markup("[bold white]Welcome to QueryNest[/bold white]"))
+
+    elements.extend([
+        Text.from_markup("[dim]Autonomous AI pair programmer & codebase intelligence engine[/dim]"),
         Text(""),
-        Text.from_markup(f"• [bold green]Workspace Root:[/] {workspace_root}"),
-        Text.from_markup(f"• [bold yellow]Active Model:[/] {active_provider.upper()} ({active_model})"),
+        Text.from_markup(f"[bold green]📁 Workspace:[/]  {workspace_root}"),
+        Text.from_markup(f"[bold yellow]⚡ Engine:[/]     {active_provider.upper()} ({active_model})"),
+    ])
+
+    if user and user.get("email"):
+        elements.append(Text.from_markup(f"[bold cyan]👤 Account:[/]    {user.get('email')}"))
+
+    elements.extend([
         Text(""),
-        Text.from_markup("[dim]Type [bold cyan]/[/bold cyan] for commands or enter your task below[/dim]"),
-    )
+        Text.from_markup("[dim]Tip: Type [bold cyan]/[/bold cyan] for slash commands or describe any task below[/dim]"),
+    ])
 
     return Panel(
-        content,
+        Group(*elements),
         padding=(1, 2),
         border_style=COLORS["border"],
         expand=True,

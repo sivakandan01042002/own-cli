@@ -66,6 +66,19 @@ def handle_login(args: str = "") -> Optional[str]:
     return None
 
 
+def handle_me(args: str = "") -> Optional[str]:
+    """Displays current authenticated user name and email cleanly."""
+    from app.core.auth import get_current_user
+    user = get_current_user()
+    if user and user.get("email"):
+        name = user.get("name") or user.get("email", "").split("@")[0]
+        email = user.get("email", "")
+        console.print(f"[green]User:[/] [white]{name}[/white] [dim]({email})[/dim]\n")
+    else:
+        console.print("[dim]Not signed in. Type [cyan]/login[/cyan] to sign in.[/dim]\n")
+    return None
+
+
 def handle_whoami(args: str = "") -> Optional[str]:
     """Displays current authenticated Google user profile and workspace info."""
     import os
@@ -83,7 +96,7 @@ def handle_whoami(args: str = "") -> Optional[str]:
         if user.get("picture"):
             console.print(f"  • [bold white]Avatar:[/] [dim]{user.get('picture')}[/dim]")
     else:
-        console.print("  • [bold white]User:[/] [dim]Anonymous / Local Session[/dim] (Use [bold cyan]/login[/bold cyan] to connect Google)")
+        console.print("  • [bold white]User:[/] [dim]Not signed in[/dim]")
 
     console.print(f"  • [bold white]Workspace:[/] [yellow]{ws_path}[/yellow]")
     console.print(f"  • [bold white]Workspace Hash:[/] [dim]{ws_hash[:12]}[/dim]\n")
@@ -93,7 +106,8 @@ def handle_whoami(args: str = "") -> Optional[str]:
 def handle_logout(args: str = "") -> Optional[str]:
     """Logs out and clears saved Google credentials."""
     from app.core.auth import logout_user
-    logout_user()
+    if logout_user():
+        console.print("[green]✔ Logged out successfully.[/green]\n")
     return None
 
 
@@ -249,6 +263,7 @@ def handle_history(args: str = "") -> Optional[str]:
 COMMAND_DISPATCHER = {
     "/help": handle_help,
     "/login": handle_login,
+    "/me": handle_me,
     "/whoami": handle_whoami,
     "/logout": handle_logout,
     "/model": handle_model,
