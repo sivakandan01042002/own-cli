@@ -10,6 +10,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Dict, Any, Optional
 
+from app.core.config import settings
 from app.core.storage import ensure_home_dir, QUERYNEST_HOME
 from app.constants.storage import AUTH_FILENAME, DEFAULT_GOOGLE_CLIENT_ID
 
@@ -126,6 +127,8 @@ def start_google_login(port: int = 8585, timeout_seconds: int = 60) -> Optional[
     """
     Launches browser for Google Sign-In and captures redirect token on localhost.
     """
+    client_id = settings.GOOGLE_CLIENT_ID.strip() or DEFAULT_GOOGLE_CLIENT_ID
+
     OAuthCallbackHandler.auth_result = None
     
     # Find available port
@@ -142,7 +145,7 @@ def start_google_login(port: int = 8585, timeout_seconds: int = 60) -> Optional[
     # Construct Google OAuth Consent URL
     auth_url = (
         f"https://accounts.google.com/o/oauth2/v2/auth?"
-        f"client_id={DEFAULT_GOOGLE_CLIENT_ID}&"
+        f"client_id={client_id}&"
         f"response_type=code&"
         f"scope=openid%20profile%20email&"
         f"redirect_uri={urllib.parse.quote(redirect_uri)}&"

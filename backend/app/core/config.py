@@ -18,10 +18,12 @@ class Settings(BaseSettings):
     WORKSPACE_ROOT: Path = Path(os.getenv("QUERYNEST_WORKSPACE_ROOT", Path.cwd()))
 
     # ---------------------------------------------------------
-    # LLM API Keys & Provider Defaults
+    # LLM API Keys, Auth & Provider Defaults
     # ---------------------------------------------------------
     GROQ_API_KEY: str = ""
     GEMINI_API_KEY: str = ""
+    GOOGLE_CLIENT_ID: str = ""
+    GOOGLE_CLIENT_SECRET: str = ""
 
     DEFAULT_PROVIDER: str = "gemini"  # "groq" or "gemini"
     GROQ_MODEL: str = "openai/gpt-oss-120b"

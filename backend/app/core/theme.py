@@ -81,23 +81,43 @@ CLI_STYLE = Style.from_dict({
 
 
 # ---------------------------------------------------------
-# Welcome Banner Panel (Kept Boxed as requested)
+# Welcome Banner Panel (with QueryNest ASCII Art)
 # ---------------------------------------------------------
+QUERYNEST_ASCII_ART = """[bold #00d2ff]   ____                              _   _           _   
+  / __ \\                            | \\ | |         | |  
+ | |  | |_   _  ___ _ __ _   _ _____|  \\| | ___  ___| |_ 
+ | |  | | | | |/ _ \\ '__| | | |_____| . ` |/ _ \\/ __| __|
+ | |__| | |_| |  __/ |  | |_| |     | |\\  |  __/\\__ \\ |_ 
+  \\___\\_\\\\__,_|\\___|_|   \\__, |     |_| \\_|\\___||___/\\__|
+                          __/ |                          
+                         |___/                           [/]"""
+
+
+from rich.align import Align
+from rich.console import Group
+from rich.text import Text
+
+
 def create_banner_panel(workspace_root: str, active_provider: str, active_model: str) -> Panel:
-    """Creates the standard welcome banner panel with responsive fitting."""
-    banner_text = (
-        "[dim]Autonomous coding, testing & self-healing state machine powered by LangGraph[/dim]\n\n"
-        f"• [bold green]Workspace Root:[/] {workspace_root}\n\n"
-        f"• [bold yellow]Active Model:[/] {active_provider.upper()} ({active_model})\n\n"
-        "[dim]Type [bold cyan]/[/bold cyan] for commands[/dim]"
+    """Creates the standard welcome banner panel with centered ASCII art and clean left-aligned metadata."""
+    ascii_centered = Align.center(Text.from_markup(QUERYNEST_ASCII_ART))
+
+    content = Group(
+        ascii_centered,
+        Text(""),
+        Text.from_markup("[dim]Autonomous multi-agent coding, testing & self-healing state machine[/dim]"),
+        Text(""),
+        Text.from_markup(f"• [bold green]Workspace Root:[/] {workspace_root}"),
+        Text.from_markup(f"• [bold yellow]Active Model:[/] {active_provider.upper()} ({active_model})"),
+        Text(""),
+        Text.from_markup("[dim]Type [bold cyan]/[/bold cyan] for commands or enter your task below[/dim]"),
     )
+
     return Panel(
-        banner_text,
+        content,
         padding=(1, 2),
         border_style=COLORS["border"],
-        title="[bold]QueryNest Assistant[/bold]",
-        title_align="left",
-        expand=False,
+        expand=True,
     )
 
 
